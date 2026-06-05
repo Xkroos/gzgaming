@@ -84,6 +84,7 @@ export interface Payment {
   paymentMethod: PaymentMethod;
   reference?: string;
   receiptImageUrl?: string;
+  hasReceipt?: boolean;
   status: PaymentStatus;
   offerApplied?: string;
   createdAt: string;
@@ -173,7 +174,7 @@ interface AppStateContextType {
   logoutUser: () => void;
   
   // BCV Rate
-  fetchBcvRate: () => Promise<void>;
+  fetchBcvRate: (force?: boolean) => Promise<void>;
   updateBcvRateManually: (rate: number) => void;
   
   // PC Control
@@ -201,7 +202,14 @@ interface AppStateContextType {
   
   // Inventory
   restockProduct: (id: string, amount: number, reason: string) => void;
-  sellProduct: (id: string, amount: number) => void;
+  sellProduct: (
+    id: string,
+    amount: number,
+    paymentMethod?: PaymentMethod,
+    reference?: string,
+    receiptImageUrl?: string,
+    skipPayment?: boolean
+  ) => void;
   addProduct: (product: Omit<InventoryItem, 'id'>) => void;
   
   // Plans & Offers
@@ -227,8 +235,11 @@ interface AppStateContextType {
 const AppStateContext = createContext<AppStateContextType | undefined>(undefined);
 
 export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Tasa BCV State
-  const [bcvRate, setBcvRate] = useState<number>(36.50);
+  // 1. Tasa BCV State (Persistente en localStorage con fallback)
+  const [bcvRate, setBcvRate] = useState<number>(() => {
+    const saved = localStorage.getItem('gz_bcv_rate');
+    return saved ? parseFloat(saved) : 36.50;
+  });
   const [isBcvLoading, setIsBcvLoading] = useState<boolean>(false);
 
   // 2. Active Session User
@@ -276,9 +287,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // -------------------------------------------------------------
-  // BCV EXCHANGES RATE LOGIC (Live Fetch)
+  // BCV EXCHANGES RATE LOGIC (Live Fetch with Manual Sync Check)
   // -------------------------------------------------------------
-  const fetchBcvRate = async () => {
+  const fetchBcvRate = async (force: boolean = false) => {
+    const isManual = localStorage.getItem('gz_bcv_rate_is_manual') === 'true';
+    if (isManual && !force) {
+      console.log("[BCV Sync] Usando tasa manual establecida por administrador. Saltando sincronización automática.");
+      return;
+    }
+
     setIsBcvLoading(true);
     try {
       const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
@@ -287,7 +304,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (data && data.promedio) {
         const rate = parseFloat(data.promedio);
         setBcvRate(rate);
-        writeLog('BCV_SYNC', `Sincronización de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
+        localStorage.setItem('gz_bcv_rate', String(rate));
+        if (force) {
+          localStorage.setItem('gz_bcv_rate_is_manual', 'false');
+          writeLog('BCV_SYNC', `Sincronización forzada de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
+        } else {
+          writeLog('BCV_SYNC', `Sincronización de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
+        }
       }
     } catch (e: any) {
       console.warn("Falla al conectar a dolarapi. Usando tasa alternativa.", e);
@@ -298,13 +321,15 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   useEffect(() => {
-    fetchBcvRate();
-    const interval = setInterval(fetchBcvRate, 3600000);
+    fetchBcvRate(false);
+    const interval = setInterval(() => fetchBcvRate(false), 3600000);
     return () => clearInterval(interval);
   }, []);
 
   const updateBcvRateManually = (rate: number) => {
     setBcvRate(rate);
+    localStorage.setItem('gz_bcv_rate', String(rate));
+    localStorage.setItem('gz_bcv_rate_is_manual', 'true');
     writeLog('BCV_MANUAL', `Tasa BCV actualizada manualmente a ${rate} VES/$`, 'Éxito');
   };
 
@@ -812,7 +837,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const sellProduct = async (id: string, amount: number) => {
+  const sellProduct = async (
+    id: string,
+    amount: number,
+    paymentMethod: PaymentMethod = 'Efectivo $',
+    reference?: string,
+    receiptImageUrl?: string,
+    skipPayment: boolean = false
+  ) => {
     if (!currentUser) return;
     const item = inventory.find(i => i.id === id);
     if (!item) return;
@@ -840,13 +872,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const totalCostUsd = item.priceUsd * amount;
       const totalCostVes = totalCostUsd * bcvRate;
       
-      await registerPayment({
-        amountUsd: totalCostUsd,
-        amountVes: totalCostVes,
-        bcvRate,
-        paymentMethod: 'Efectivo $',
-        offerApplied: `Venta Inventario: ${item.name} x${amount}`,
-      });
+      if (!skipPayment) {
+        await registerPayment({
+          amountUsd: totalCostUsd,
+          amountVes: totalCostVes,
+          bcvRate,
+          paymentMethod,
+          reference: reference || undefined,
+          receiptImageUrl: receiptImageUrl || undefined,
+          offerApplied: `Venta Inventario: ${item.name} x${amount}`,
+        });
+      }
 
       writeLog('INV_SALE', `Producto vendido: ${item.name} (x${amount} unidades). Total: $${totalCostUsd.toFixed(2)}`, 'Éxito');
       fetchAllData();

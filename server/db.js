@@ -105,6 +105,23 @@ export async function initDatabase() {
     } else {
       console.log('Las tablas de la base de datos ya existen. Saltando inicialización del esquema.');
     }
+
+    // Asegurar que existe la columna 'reference' en la tabla 'payments'
+    console.log('Verificando columna reference en tabla payments...');
+    await pool.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference VARCHAR(100)');
+    console.log('Columna reference verificada/creada con éxito.');
+
+    // Habilitar RLS en todas las tablas para máxima seguridad
+    console.log('Habilitando seguridad RLS en todas las tablas...');
+    const tables = [
+      'console_types', 'users', 'pcs', 'plans', 'offers', 
+      'sessions', 'payments', 'inventory', 'inventory_logs', 
+      'shift_closings', 'credentials', 'audit_logs'
+    ];
+    for (const table of tables) {
+      await pool.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
+    }
+    console.log('Seguridad RLS habilitada en todas las tablas con éxito.');
   } catch (error) {
     console.error('Error al inicializar el esquema de base de datos:', error.message);
     throw error;

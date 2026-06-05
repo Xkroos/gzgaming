@@ -76,15 +76,34 @@ export const PCConsole: React.FC = () => {
   // Payment form states (step 2)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Pago Móvil');
   const [paymentReference, setPaymentReference] = useState('');
+  const [paymentReceiptImageUrl, setPaymentReceiptImageUrl] = useState('');
 
   // Form States for Adding Time
   const [addMinutes, setAddMinutes] = useState(30);
+  const [addTimePaymentMethod, setAddTimePaymentMethod] = useState<PaymentMethod>('Pago Móvil');
+  const [addTimeReference, setAddTimeReference] = useState('');
+  const [addTimeReceiptImageUrl, setAddTimeReceiptImageUrl] = useState('');
 
   // Extras states
   const [extrasCart, setExtrasCart] = useState<Record<string, number>>({});
   const [showExtrasPayment, setShowExtrasPayment] = useState(false);
   const [extrasPaymentMethod, setExtrasPaymentMethod] = useState<PaymentMethod>('Pago Móvil');
   const [extrasPaymentRef, setExtrasPaymentRef] = useState('');
+  const [extrasPaymentReceiptImageUrl, setExtrasPaymentReceiptImageUrl] = useState('');
+
+  // File Upload Helper
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          callback(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Helper: Format Time in seconds to hh:mm:ss
   const formatTime = (totalSeconds: number) => {
@@ -160,6 +179,7 @@ export const PCConsole: React.FC = () => {
       bcvRate,
       paymentMethod,
       reference: paymentReference || undefined,
+      receiptImageUrl: paymentReceiptImageUrl || undefined,
       offerApplied: `${planName} - PC: ${selectedPC.id} ${offerName ? `(${offerName})` : ''}`,
     });
 
@@ -175,6 +195,7 @@ export const PCConsole: React.FC = () => {
     setCustomMinutes(60);
     setPaymentMethod('Pago Móvil');
     setPaymentReference('');
+    setPaymentReceiptImageUrl('');
   };
 
   const handleAddTimeSubmit = (e: React.FormEvent) => {
@@ -192,7 +213,9 @@ export const PCConsole: React.FC = () => {
       amountUsd: priceUsd,
       amountVes: priceVes,
       bcvRate,
-      paymentMethod: 'Efectivo $',
+      paymentMethod: addTimePaymentMethod,
+      reference: addTimeReference || undefined,
+      receiptImageUrl: addTimeReceiptImageUrl || undefined,
       offerApplied: `Tiempo adicional (+${addMinutes} min) - PC: ${selectedPC.id}`,
     });
 
@@ -201,6 +224,9 @@ export const PCConsole: React.FC = () => {
     setShowAddTimeModal(false);
     setSelectedPC(null);
     setAddMinutes(30);
+    setAddTimePaymentMethod('Pago Móvil');
+    setAddTimeReference('');
+    setAddTimeReceiptImageUrl('');
   };
 
   // Extras helpers
@@ -249,9 +275,9 @@ export const PCConsole: React.FC = () => {
       return item ? `${item.name} x${qty}` : '';
     }).filter(Boolean).join(', ');
 
-    // Sell products from inventory
+    // Sell products from inventory (passing skipPayment=true to avoid double payments)
     Object.entries(extrasCart).forEach(([id, qty]) => {
-      sellProduct(id, qty);
+      sellProduct(id, qty, undefined, undefined, undefined, true);
     });
 
     // Register separate payment for extras
@@ -261,6 +287,7 @@ export const PCConsole: React.FC = () => {
       bcvRate,
       paymentMethod: extrasPaymentMethod,
       reference: extrasPaymentRef || undefined,
+      receiptImageUrl: extrasPaymentReceiptImageUrl || undefined,
       offerApplied: `Extras (${selectedPC.id} - ${selectedPC.clientName}): ${itemNames}`,
     });
 
@@ -273,6 +300,7 @@ export const PCConsole: React.FC = () => {
     setSelectedPC(null);
     setExtrasPaymentMethod('Pago Móvil');
     setExtrasPaymentRef('');
+    setExtrasPaymentReceiptImageUrl('');
   };
 
   return (
@@ -781,15 +809,31 @@ export const PCConsole: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Referencia / Comprobante</label>
+                    <label className="form-label">Referencia del Pago</label>
                     <input 
                       type="text" 
                       className="form-input" 
-                      placeholder="Ej. #12345678 o número de comprobante"
+                      placeholder="Ej. #12345678"
                       value={paymentReference}
                       onChange={e => setPaymentReference(e.target.value)}
+                      required={paymentMethod !== 'Efectivo $'}
                     />
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Opcional para efectivo</span>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Comprobante de Pago</label>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      className="form-input"
+                      onChange={e => handleFileChange(e, setPaymentReceiptImageUrl)}
+                      required={paymentMethod !== 'Efectivo $'}
+                    />
+                    {paymentReceiptImageUrl && (
+                      <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                        <img src={paymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -835,6 +879,49 @@ export const PCConsole: React.FC = () => {
                     onChange={e => setAddMinutes(parseInt(e.target.value) || 0)} 
                     required 
                   />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Método de Pago</label>
+                  <select 
+                    className="form-select"
+                    value={addTimePaymentMethod}
+                    onChange={e => setAddTimePaymentMethod(e.target.value as PaymentMethod)}
+                  >
+                    <option value="Pago Móvil">Pago Móvil</option>
+                    <option value="Efectivo $">Efectivo $</option>
+                    <option value="Efectivo Bs.">Efectivo Bs.</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Punto de Venta">Punto de Venta</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Referencia del Pago</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej. #12345678"
+                    value={addTimeReference}
+                    onChange={e => setAddTimeReference(e.target.value)}
+                    required={addTimePaymentMethod !== 'Efectivo $'}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Comprobante de Pago</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    className="form-input"
+                    onChange={e => handleFileChange(e, setAddTimeReceiptImageUrl)}
+                    required={addTimePaymentMethod !== 'Efectivo $'}
+                  />
+                  {addTimeReceiptImageUrl && (
+                    <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                      <img src={addTimeReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                    </div>
+                  )}
                 </div>
 
                 {/* Real-time Calculation Panel */}
@@ -990,14 +1077,31 @@ export const PCConsole: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Referencia / Comprobante</label>
+                    <label className="form-label">Referencia del Pago</label>
                     <input
                       type="text"
                       className="form-input"
                       placeholder="Ej. #12345678"
                       value={extrasPaymentRef}
                       onChange={e => setExtrasPaymentRef(e.target.value)}
+                      required={extrasPaymentMethod !== 'Efectivo $'}
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Comprobante de Pago</label>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      className="form-input"
+                      onChange={e => handleFileChange(e, setExtrasPaymentReceiptImageUrl)}
+                      required={extrasPaymentMethod !== 'Efectivo $'}
+                    />
+                    {extrasPaymentReceiptImageUrl && (
+                      <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                        <img src={extrasPaymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="modal-footer">

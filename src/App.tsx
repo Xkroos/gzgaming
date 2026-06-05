@@ -415,7 +415,7 @@ const MainAppContent: React.FC = () => {
               <Landmark size={16} />
               <span>BCV: {bcvRate.toFixed(2)}</span>
               <button 
-                onClick={() => { fetchBcvRate(); toast.info('Sincronizando...', 'Actualizando tasa BCV oficial.'); }} 
+                onClick={() => { fetchBcvRate(true); toast.info('Sincronizando...', 'Actualizando tasa BCV oficial.'); }} 
                 disabled={isBcvLoading}
                 style={{ background: 'none', border: 'none', color: 'var(--neon-cyan)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
                 title="Sincronizar Tasa BCV Oficial"

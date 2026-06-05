@@ -5,9 +5,6 @@ import { useToast } from '../components/ToastNotification';
 import { 
   DollarSign, Check, X, Printer, Clipboard, Calendar, Eye 
 } from 'lucide-react';
-// Import the generated receipt image
-import receiptMockImg from '../assets/comprobante_banco.png';
-
 export const Payments: React.FC = () => {
   const { 
     payments, registerPayment, validatePayment, rejectPayment, closeShift, 
@@ -28,9 +25,52 @@ export const Payments: React.FC = () => {
 
   // Manual payment form states
   const [amountUsd, setAmountUsd] = useState<number>(0);
+  const [amountVes, setAmountVes] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Pago Móvil');
-  const [receiptProvided, setReceiptProvided] = useState(false);
+  const [manualPaymentRef, setManualPaymentRef] = useState('');
+  const [manualPaymentReceiptImageUrl, setManualPaymentReceiptImageUrl] = useState('');
   const [customDetail, setCustomDetail] = useState('');
+  const [activeReceiptUrl, setActiveReceiptUrl] = useState<string>('');
+
+  const closeReceiptModal = () => {
+    setActiveReceiptPayment(null);
+    setActiveReceiptUrl('');
+  };
+
+  // Utility to convert base64 to Blob URL for clean browser preview and downloading
+  const base64ToBlobUrl = (base64Data: string | undefined) => {
+    if (!base64Data) return '';
+    if (!base64Data.startsWith('data:')) return base64Data; // Already a URL or Blob URL
+    try {
+      const parts = base64Data.split(';base64,');
+      const contentType = parts[0].split(':')[1];
+      const raw = window.atob(parts[1]);
+      const rawLength = raw.length;
+      const uInt8Array = new Uint8Array(rawLength);
+      for (let i = 0; i < rawLength; ++i) {
+        uInt8Array[i] = raw.charCodeAt(i);
+      }
+      const blob = new Blob([uInt8Array], { type: contentType });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.error("Error converting base64 to blob url:", e);
+      return base64Data;
+    }
+  };
+
+  // File Upload Helper
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, callback: (base64: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          callback(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Close shift form states
   const [cashUsdInHand, setCashUsdInHand] = useState(0);
@@ -128,7 +168,11 @@ export const Payments: React.FC = () => {
     let rowsHtml = filteredPayments.map(p => `
       <tr>
         <td style="padding: 8px; border: 1px solid #ddd;">${new Date(p.createdAt).toLocaleDateString('es-VE')} ${new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-        <td style="padding: 8px; border: 1px solid #ddd;"><strong>${p.offerApplied || 'Cobro de Juego'}</strong><br><small style="color: #666">ID: ${p.id}</small></td>
+        <td style="padding: 8px; border: 1px solid #ddd;">
+          <strong>${p.offerApplied || 'Cobro de Juego'}</strong><br>
+          <small style="color: #666">ID: ${p.id}</small>
+          ${p.reference ? `<br><small style="color: #8a2be2"><strong>Ref:</strong> ${p.reference}</small>` : ''}
+        </td>
         <td style="padding: 8px; border: 1px solid #ddd;">${p.operatorName}</td>
         <td style="padding: 8px; border: 1px solid #ddd;">${p.paymentMethod}</td>
         <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">$${p.amountUsd.toFixed(2)}</td>
@@ -277,22 +321,24 @@ export const Payments: React.FC = () => {
   const handleRegisterPayment = (e: React.FormEvent) => {
     e.preventDefault();
     
-    const vesValue = amountUsd * bcvRate;
     registerPayment({
       amountUsd,
-      amountVes: vesValue,
+      amountVes: amountVes,
       bcvRate,
       paymentMethod,
       offerApplied: customDetail ? `Manual: ${customDetail}` : 'Cobro Manual',
-      receiptImageUrl: receiptProvided ? receiptMockImg : undefined
+      reference: manualPaymentRef || undefined,
+      receiptImageUrl: manualPaymentReceiptImageUrl || undefined
     });
 
-    toast.success('Cobro Registrado', `$${amountUsd.toFixed(2)} via ${paymentMethod}`);
+    toast.success('Cobro Registrado', `$${amountUsd.toFixed(2)} (${amountVes.toFixed(2)} Bs.) via ${paymentMethod}`);
 
     setShowRegisterModal(false);
     setAmountUsd(0);
+    setAmountVes(0);
     setCustomDetail('');
-    setReceiptProvided(false);
+    setManualPaymentRef('');
+    setManualPaymentReceiptImageUrl('');
   };
 
   const handleCloseShift = async (e: React.FormEvent) => {
@@ -600,6 +646,11 @@ export const Payments: React.FC = () => {
                     <td>
                       <div style={{ fontWeight: 'bold' }}>{pay.offerApplied || 'Cobro de Juego'}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>ID: {pay.id}</div>
+                      {pay.reference && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--neon-cyan)', fontWeight: 'bold', marginTop: '2px' }}>
+                          Ref: {pay.reference}
+                        </div>
+                      )}
                     </td>
                     <td>{pay.operatorName}</td>
                     <td>
@@ -621,9 +672,21 @@ export const Payments: React.FC = () => {
                       }`}>
                         {pay.status}
                       </span>
-                      {pay.receiptImageUrl && (
+                      {pay.hasReceipt && (
                         <button 
-                          onClick={() => setActiveReceiptPayment(pay)}
+                          onClick={async () => {
+                            setActiveReceiptPayment(pay);
+                            setActiveReceiptUrl('');
+                            try {
+                              const res = await fetch(`/api/payments/${pay.id}/receipt`);
+                              if (res.ok) {
+                                const data = await res.json();
+                                setActiveReceiptUrl(base64ToBlobUrl(data.receiptImageUrl));
+                              }
+                            } catch (err) {
+                              console.error("Error loading receipt image:", err);
+                            }
+                          }}
                           style={{ background: 'none', border: 'none', color: 'var(--neon-cyan)', marginLeft: '8px', cursor: 'pointer', padding: '2px' }}
                           title="Ver Comprobante"
                         >
@@ -680,10 +743,31 @@ export const Payments: React.FC = () => {
                   <input 
                     type="number" 
                     className="form-input" 
-                    min="0.1" 
+                    min="0" 
                     step="0.01" 
-                    value={amountUsd}
-                    onChange={(e) => setAmountUsd(parseFloat(e.target.value) || 0)}
+                    value={amountUsd || ''}
+                    onChange={(e) => {
+                      const usd = parseFloat(e.target.value) || 0;
+                      setAmountUsd(usd);
+                      setAmountVes(parseFloat((usd * bcvRate).toFixed(2)));
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Monto en Bolívares (VES)</label>
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    min="0" 
+                    step="0.01" 
+                    value={amountVes || ''}
+                    onChange={(e) => {
+                      const ves = parseFloat(e.target.value) || 0;
+                      setAmountVes(ves);
+                      setAmountUsd(parseFloat((ves / bcvRate).toFixed(2)));
+                    }}
                     required
                   />
                 </div>
@@ -716,20 +800,37 @@ export const Payments: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'white', cursor: 'pointer', marginTop: '12px' }}>
-                    <input 
-                      type="checkbox" 
-                      checked={receiptProvided} 
-                      onChange={(e) => setReceiptProvided(e.target.checked)} 
-                    />
-                    Adjuntar captura de comprobante bancario (Simulado)
-                  </label>
+                  <label className="form-label">Referencia del Pago</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej. #12345678"
+                    value={manualPaymentRef}
+                    onChange={(e) => setManualPaymentRef(e.target.value)}
+                    required={paymentMethod !== 'Efectivo $'}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Comprobante de Pago</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    className="form-input"
+                    onChange={e => handleFileChange(e, setManualPaymentReceiptImageUrl)}
+                    required={paymentMethod !== 'Efectivo $'}
+                  />
+                  {manualPaymentReceiptImageUrl && (
+                    <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                      <img src={manualPaymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', marginTop: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Monto en VES (Tasa {bcvRate}):</span>
-                    <span style={{ color: 'var(--neon-green)', fontWeight: 'bold' }}>{(amountUsd * bcvRate).toFixed(2)} Bs.</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>Monto en VES (Tasa {bcvRate.toFixed(2)} Bs/$):</span>
+                    <span style={{ color: 'var(--neon-green)', fontWeight: 'bold' }}>{amountVes.toFixed(2)} Bs.</span>
                   </div>
                 </div>
               </div>
@@ -744,22 +845,59 @@ export const Payments: React.FC = () => {
 
       {/* COMPROBANTE VISOR MODAL (Admin zoom) */}
       {activeReceiptPayment && (
-        <div className="modal-overlay" onClick={() => setActiveReceiptPayment(null)}>
+        <div className="modal-overlay" onClick={closeReceiptModal}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
             <div className="modal-header">
               <h3 style={{ color: 'white' }}>Ver Comprobante Digital</h3>
-              <button className="btn btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setActiveReceiptPayment(null)}>✕</button>
+              <button className="btn btn-secondary" style={{ padding: '4px 8px' }} onClick={closeReceiptModal}>✕</button>
             </div>
             <div className="modal-body" style={{ padding: '16px' }}>
               <div className="comprobante-visor-container">
                 <div className="comprobante-frame">
-                  <img src={activeReceiptPayment.receiptImageUrl} className="comprobante-img" alt="Comprobante Bancario" />
+                  <img src={activeReceiptUrl || 'https://placehold.co/400x600?text=Cargando+Comprobante...'} className="comprobante-img" alt="Comprobante Bancario" />
                 </div>
                 <div style={{ width: '100%', fontSize: '0.85rem' }}>
                   <p style={{ color: 'white', marginBottom: '4px' }}><strong>ID Transacción:</strong> {activeReceiptPayment.id}</p>
+                  {activeReceiptPayment.reference && (
+                    <p style={{ color: 'var(--neon-cyan)', marginBottom: '4px', fontWeight: 'bold' }}><strong>Referencia:</strong> {activeReceiptPayment.reference}</p>
+                  )}
                   <p style={{ color: 'white', marginBottom: '4px' }}><strong>Monto:</strong> ${activeReceiptPayment.amountUsd.toFixed(2)} ({activeReceiptPayment.amountVes.toFixed(2)} Bs.)</p>
                   <p style={{ color: 'white', marginBottom: '4px' }}><strong>Operador:</strong> {activeReceiptPayment.operatorName}</p>
-                  <p style={{ color: 'white' }}><strong>Fecha:</strong> {new Date(activeReceiptPayment.createdAt).toLocaleString()}</p>
+                  <p style={{ color: 'white', marginBottom: '12px' }}><strong>Fecha:</strong> {new Date(activeReceiptPayment.createdAt).toLocaleString()}</p>
+                  
+                  {activeReceiptUrl && (
+                    <div style={{ display: 'flex', gap: '8px', width: '100%', marginTop: '8px' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        style={{ flex: 1, padding: '6px', fontSize: '0.8rem' }}
+                        onClick={() => {
+                          const url = activeReceiptUrl;
+                          if (url) window.open(url, '_blank');
+                        }}
+                      >
+                        Nueva Pestaña
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        style={{ flex: 1, padding: '6px', fontSize: '0.8rem' }}
+                        onClick={() => {
+                          const url = activeReceiptUrl;
+                          if (url) {
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = `comprobante_${activeReceiptPayment.id}.png`;
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                          }
+                        }}
+                      >
+                        Descargar
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -769,7 +907,7 @@ export const Payments: React.FC = () => {
                   className="btn btn-green" 
                   onClick={() => {
                     validatePayment(activeReceiptPayment.id);
-                    setActiveReceiptPayment(null);
+                    closeReceiptModal();
                   }}
                 >
                   <Check size={14} /> Validar Pago
@@ -778,7 +916,7 @@ export const Payments: React.FC = () => {
                   className="btn btn-danger" 
                   onClick={() => {
                     rejectPayment(activeReceiptPayment.id);
-                    setActiveReceiptPayment(null);
+                    closeReceiptModal();
                   }}
                 >
                   <X size={14} /> Rechazar

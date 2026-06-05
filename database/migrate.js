@@ -39,12 +39,12 @@ async function runMigration() {
       ALTER COLUMN current_session_id TYPE VARCHAR(50)
     `);
 
-    // 4. Deshabilitar RLS en las tablas críticas
-    console.log("Deshabilitando RLS en tablas críticas...");
-    await client.query("ALTER TABLE payments DISABLE ROW LEVEL SECURITY");
-    await client.query("ALTER TABLE audit_logs DISABLE ROW LEVEL SECURITY");
-    await client.query("ALTER TABLE inventory DISABLE ROW LEVEL SECURITY");
-    await client.query("ALTER TABLE shift_closings DISABLE ROW LEVEL SECURITY");
+    // 4. Habilitar RLS en las tablas críticas
+    console.log("Habilitando RLS en tablas críticas...");
+    await client.query("ALTER TABLE payments ENABLE ROW LEVEL SECURITY");
+    await client.query("ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY");
+    await client.query("ALTER TABLE inventory ENABLE ROW LEVEL SECURITY");
+    await client.query("ALTER TABLE shift_closings ENABLE ROW LEVEL SECURITY");
 
     console.log("¡Migración completada con éxito!");
   } catch (error) {

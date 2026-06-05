@@ -168,8 +168,8 @@ class GameZoneClientApp:
         cx, cy = self.screen_w // 2, self.screen_h // 2
         
         # Decorative neon orbs
-        self.canvas.create_oval(cx - 300, cy - 300, cx + 300, cy + 300, outline="rgba(138, 43, 226, 0.05)", width=2)
-        self.canvas.create_oval(cx - 200, cy - 200, cx + 200, cy + 200, outline="rgba(0, 240, 255, 0.05)", width=1)
+        self.canvas.create_oval(cx - 300, cy - 300, cx + 300, cy + 300, outline="#1b0e2b", width=2)
+        self.canvas.create_oval(cx - 200, cy - 200, cx + 200, cy + 200, outline="#082330", width=1)
         
         # Game Zone Title
         self.title_text = self.canvas.create_text(

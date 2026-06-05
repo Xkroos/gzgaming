@@ -11,22 +11,24 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Interceptor para imprimir errores 500 en la consola del servidor
+// Interceptor para imprimir errores >= 400 en la consola del servidor
 app.use((req, res, next) => {
+  console.log(`[Request] ${req.method} ${req.url}`);
   const originalStatus = res.status;
   res.status = function(code) {
-    if (code >= 500) {
-      console.error(`[Server Error] ${req.method} ${req.originalUrl || req.url} - Status Code: ${code}`);
+    if (code >= 400) {
+      console.error(`[Server HTTP Error] ${req.method} ${req.originalUrl || req.url} - Status Code: ${code}`);
     }
     return originalStatus.apply(this, arguments);
   };
 
   const originalJson = res.json;
   res.json = function(body) {
-    if (res.statusCode >= 500 && body && body.error) {
-      console.error(`[Server Error Details]:`, body.error);
+    if (res.statusCode >= 400 && body && body.error) {
+      console.error(`[Server HTTP Error Details]:`, body.error);
     }
     return originalJson.apply(this, arguments);
   };
@@ -454,7 +456,7 @@ app.get('/api/payments', async (req, res) => {
       SELECT p.id, p.session_id as "sessionId", p.operator_id as "operatorId", u1.full_name as "operatorName", 
              p.validator_id as "validatorId", u2.full_name as "validatorName", p.amount_usd as "amountUsd", 
              p.amount_ves as "amountVes", p.bcv_rate as "bcvRate", p.payment_method as "paymentMethod", 
-             p.receipt_image_url as "receiptImageUrl", p.status, p.offer_applied as "offerApplied", 
+             (p.receipt_image_url IS NOT NULL) as "hasReceipt", p.reference, p.status, p.offer_applied as "offerApplied", 
              p.created_at as "createdAt", p.validated_at as "validatedAt"
       FROM payments p
       LEFT JOIN users u1 ON p.operator_id = u1.id
@@ -467,11 +469,35 @@ app.get('/api/payments', async (req, res) => {
   }
 });
 
+app.get('/api/payments/:id/receipt', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT receipt_image_url as "receiptImageUrl"
+      FROM payments WHERE id = $1
+    `, [id]);
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/api/payments', async (req, res) => {
   const { sessionId, operatorId, amountUsd, amountVes, bcvRate, paymentMethod, reference, receiptImageUrl, offerApplied } = req.body;
   try {
-    // Si no tenemos operatorId en el body, asumimos el primero disponible de tipo Admin u Operador
     let opId = operatorId;
+    if (opId) {
+      // Verificar si el UUID del operador realmente existe en la base de datos de Supabase
+      const checkOp = await pool.query(`SELECT id FROM users WHERE id = $1`, [opId]);
+      if (checkOp.rowCount === 0) {
+        opId = null; // Si no existe en la base de datos, forzamos el fallback
+      }
+    }
+    
+    // Si no tenemos operatorId o el guardado es inválido, asumimos el primero disponible
     if (!opId) {
       const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
       if (opRes.rowCount > 0) opId = opRes.rows[0].id;
@@ -479,12 +505,12 @@ app.post('/api/payments', async (req, res) => {
     
     // El trigger en schema.sql requiere status = 'Pendiente' por defecto al insertar
     const result = await pool.query(`
-      INSERT INTO payments (session_id, operator_id, amount_usd, amount_ves, bcv_rate, payment_method, receipt_image_url, status, offer_applied)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'Pendiente', $8)
+      INSERT INTO payments (session_id, operator_id, amount_usd, amount_ves, bcv_rate, payment_method, receipt_image_url, reference, status, offer_applied)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Pendiente', $9)
       RETURNING id, session_id as "sessionId", operator_id as "operatorId", amount_usd as "amountUsd", 
                 amount_ves as "amountVes", bcv_rate as "bcvRate", payment_method as "paymentMethod", 
-                receipt_image_url as "receiptImageUrl", status, offer_applied as "offerApplied", created_at as "createdAt"
-    `, [sessionId || null, opId, amountUsd, amountVes, bcvRate, paymentMethod, receiptImageUrl || reference || null, offerApplied || null]);
+                receipt_image_url as "receiptImageUrl", reference, status, offer_applied as "offerApplied", created_at as "createdAt"
+    `, [sessionId || null, opId, amountUsd, amountVes, bcvRate, paymentMethod, receiptImageUrl || null, reference || null, offerApplied || null]);
     
     // Obtener el nombre del operador para responder al frontend
     const details = await pool.query(`
@@ -680,11 +706,17 @@ app.get('/api/shift-closings', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
 app.post('/api/shift-closings', async (req, res) => {
   const { operatorId, startTime, endTime, totalUsdGenerated, totalVesGenerated, totalTimeMinutes, details } = req.body;
   try {
     let opId = operatorId;
+    if (opId) {
+      const checkOp = await pool.query(`SELECT id FROM users WHERE id = $1`, [opId]);
+      if (checkOp.rowCount === 0) {
+        opId = null;
+      }
+    }
+    
     if (!opId) {
       const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
       if (opRes.rowCount > 0) opId = opRes.rows[0].id;
