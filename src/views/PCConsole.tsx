@@ -3,7 +3,7 @@ import { useAppState } from '../context/AppStateContext';
 import type { PC, PaymentMethod } from '../context/AppStateContext';
 import { useToast } from '../components/ToastNotification';
 import { 
-  Monitor, Play, Pause, Square, Plus, Info, Zap, Users, Clock, ShoppingBag, CreditCard, Edit2, Trash2
+  Monitor, Play, Pause, Square, Plus, Info, Zap, Users, Clock, ShoppingBag, CreditCard, Edit2, Trash2, Upload
 } from 'lucide-react';
 
 export const PCConsole: React.FC = () => {
@@ -808,30 +808,36 @@ export const PCConsole: React.FC = () => {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label className="form-label">Referencia del Pago</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Ej. #12345678"
-                      value={paymentReference}
-                      onChange={e => setPaymentReference(e.target.value)}
-                      required={paymentMethod !== 'Efectivo $'}
-                    />
-                  </div>
+                  {paymentMethod !== 'Efectivo $' && paymentMethod !== 'Efectivo Bs.' && (
+                    <div className="form-group">
+                      <label className="form-label">Referencia del Pago</label>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Ej. #12345678"
+                        value={paymentReference}
+                        onChange={e => setPaymentReference(e.target.value)}
+                      />
+                    </div>
+                  )}
 
                   <div className="form-group">
-                    <label className="form-label">Comprobante de Pago</label>
-                    <input 
-                      type="file" 
+                    <label className="form-label">Comprobante de Pago <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(Opcional)</span></label>
+                    <input
+                      type="file"
                       accept="image/*"
-                      className="form-input"
+                      id="assign-receipt-upload"
+                      style={{ display: 'none' }}
                       onChange={e => handleFileChange(e, setPaymentReceiptImageUrl)}
-                      required={paymentMethod !== 'Efectivo $'}
                     />
+                    <label htmlFor="assign-receipt-upload" className="file-upload-trigger">
+                      <Upload size={16} />
+                      {paymentReceiptImageUrl ? '✅ Comprobante cargado — Click para cambiar' : '📎 Subir comprobante (imagen)'}
+                    </label>
                     {paymentReceiptImageUrl && (
-                      <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
-                        <img src={paymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                      <div style={{ marginTop: '10px', border: '1px solid rgba(0,240,255,0.2)', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+                        <img src={paymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'cover', display: 'block' }} />
+                        <button type="button" onClick={() => setPaymentReceiptImageUrl('')} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                       </div>
                     )}
                   </div>
@@ -909,17 +915,22 @@ export const PCConsole: React.FC = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Comprobante de Pago</label>
-                  <input 
-                    type="file" 
+                  <label className="form-label">Comprobante de Pago <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(Opcional)</span></label>
+                  <input
+                    type="file"
                     accept="image/*"
-                    className="form-input"
+                    id="addtime-receipt-upload"
+                    style={{ display: 'none' }}
                     onChange={e => handleFileChange(e, setAddTimeReceiptImageUrl)}
-                    required={addTimePaymentMethod !== 'Efectivo $'}
                   />
+                  <label htmlFor="addtime-receipt-upload" className="file-upload-trigger">
+                    <Upload size={16} />
+                    {addTimeReceiptImageUrl ? '✅ Comprobante cargado — Click para cambiar' : '📎 Subir comprobante (imagen)'}
+                  </label>
                   {addTimeReceiptImageUrl && (
-                    <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
-                      <img src={addTimeReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                    <div style={{ marginTop: '10px', border: '1px solid rgba(0,240,255,0.2)', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+                      <img src={addTimeReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'cover', display: 'block' }} />
+                      <button type="button" onClick={() => setAddTimeReceiptImageUrl('')} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                     </div>
                   )}
                 </div>
@@ -1089,17 +1100,22 @@ export const PCConsole: React.FC = () => {
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Comprobante de Pago</label>
-                    <input 
-                      type="file" 
+                    <label className="form-label">Comprobante de Pago <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>(Opcional)</span></label>
+                    <input
+                      type="file"
                       accept="image/*"
-                      className="form-input"
+                      id="extras-receipt-upload"
+                      style={{ display: 'none' }}
                       onChange={e => handleFileChange(e, setExtrasPaymentReceiptImageUrl)}
-                      required={extrasPaymentMethod !== 'Efectivo $'}
                     />
+                    <label htmlFor="extras-receipt-upload" className="file-upload-trigger">
+                      <Upload size={16} />
+                      {extrasPaymentReceiptImageUrl ? '✅ Comprobante cargado — Click para cambiar' : '📎 Subir comprobante (imagen)'}
+                    </label>
                     {extrasPaymentReceiptImageUrl && (
-                      <div style={{ marginTop: '10px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '6px', textAlign: 'center', background: 'rgba(0,0,0,0.2)' }}>
-                        <img src={extrasPaymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '100px', borderRadius: '4px' }} />
+                      <div style={{ marginTop: '10px', border: '1px solid rgba(0,240,255,0.2)', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+                        <img src={extrasPaymentReceiptImageUrl} alt="Preview" style={{ maxWidth: '100%', maxHeight: '120px', objectFit: 'cover', display: 'block' }} />
+                        <button type="button" onClick={() => setExtrasPaymentReceiptImageUrl('')} style={{ position: 'absolute', top: '6px', right: '6px', background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
                       </div>
                     )}
                   </div>

@@ -394,9 +394,22 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  const fetchDynamicData = async () => {
+    try {
+      const [pcsRes, paymentsRes] = await Promise.all([
+        fetch('/api/pcs').then(r => r.json()),
+        fetch('/api/payments').then(r => r.json())
+      ]);
+      if (Array.isArray(pcsRes)) setPcs(pcsRes);
+      if (Array.isArray(paymentsRes)) setPayments(paymentsRes);
+    } catch (error) {
+      console.error('Error fetching dynamic data:', error);
+    }
+  };
+
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 5000);
+    const interval = setInterval(fetchDynamicData, 5000);
     return () => clearInterval(interval);
   }, [currentUser]);
 

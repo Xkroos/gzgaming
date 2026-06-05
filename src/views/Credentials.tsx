@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import type { CredentialCategory } from '../context/AppStateContext';
 import { 
-  ShieldAlert, Plus, Trash2, Eye, EyeOff, Search, Lock
+  ShieldAlert, Plus, Trash2, Eye, EyeOff, Search
 } from 'lucide-react';
 
 export const Credentials: React.FC = () => {
@@ -22,8 +22,7 @@ export const Credentials: React.FC = () => {
   const [notes, setNotes] = useState('');
 
   const isOperator = currentUser?.role === 'Operador';
-  const isEncargado = currentUser?.role === 'Encargado';
-  const canViewCredentials = currentUser?.role === 'Admin';
+  const canViewCredentials = currentUser?.role === 'Admin' || currentUser?.role === 'Encargado';
 
   const togglePasswordVisibility = (id: string) => {
     if (!canViewCredentials) return;
@@ -35,7 +34,7 @@ export const Credentials: React.FC = () => {
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (isOperator || isEncargado) return;
+    if (isOperator) return;
     addCredential({
       entityName,
       loginUsername,
@@ -70,21 +69,6 @@ export const Credentials: React.FC = () => {
           </button>
         )}
       </div>
-
-      {/* Encargado restriction notice */}
-      {isEncargado && (
-        <div className="glass-card" style={{ marginBottom: '24px', border: '1px solid rgba(255,204,0,0.3)', background: 'rgba(255,204,0,0.05)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <Lock size={24} style={{ color: 'var(--neon-yellow)' }} />
-            <div>
-              <div style={{ color: 'var(--neon-yellow)', fontWeight: 700, fontSize: '0.9rem' }}>Acceso Restringido</div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                Como Encargado, no tienes permisos para ver credenciales de acceso. Solo puedes ver los nombres de las cuentas y categorías.
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="glass-card" style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -129,15 +113,15 @@ export const Credentials: React.FC = () => {
               <div style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-glass)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Usuario:</span>
-                  <span style={{ color: (isEncargado || isOperator) ? 'var(--text-muted)' : 'white', fontWeight: 'bold', fontFamily: (isEncargado || isOperator) ? 'inherit' : 'inherit' }}>
-                    {(isEncargado || isOperator) ? '••••••••' : cred.loginUsername}
+                  <span style={{ color: isOperator ? 'var(--text-muted)' : 'white', fontWeight: 'bold' }}>
+                    {isOperator ? '••••••••' : cred.loginUsername}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-muted)' }}>Contraseña:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ color: showPass ? 'var(--neon-cyan)' : 'var(--text-secondary)', fontFamily: 'monospace', fontWeight: 'bold' }}>
-                      {(isEncargado || isOperator) ? '••••••••' : showPass ? cred.loginPassword : '••••••••'}
+                      {isOperator ? '••••••••' : showPass ? cred.loginPassword : '••••••••'}
                     </span>
                     {canViewCredentials && (
                       <button 
@@ -151,10 +135,10 @@ export const Credentials: React.FC = () => {
                 </div>
               </div>
 
-              {(isOperator || isEncargado) && (
+              {isOperator && (
                 <div style={{ fontSize: '0.75rem', color: 'var(--neon-red)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                   <ShieldAlert size={12} />
-                  <span>{isEncargado ? 'Encargados no pueden ver credenciales' : 'Solo Administradores pueden ver contraseñas'}</span>
+                  <span>Solo Administradores y Encargados pueden ver contraseñas</span>
                 </div>
               )}
             </div>
