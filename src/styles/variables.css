@@ -1,0 +1,91 @@
+:root {
+  /* Color Palette */
+  --bg-main: #07090e;
+  --bg-surface: #0e111a;
+  --bg-surface-elevated: #161b26;
+  --bg-glass: rgba(14, 17, 26, 0.7);
+  --border-glass: rgba(255, 255, 255, 0.06);
+  --border-neon: rgba(138, 43, 226, 0.2);
+
+  /* Neon Accents */
+  --neon-purple: #8a2be2;
+  --neon-purple-glow: rgba(138, 43, 226, 0.4);
+  
+  --neon-cyan: #00f0ff;
+  --neon-cyan-glow: rgba(0, 240, 255, 0.4);
+  
+  --neon-green: #39ff14;
+  --neon-green-glow: rgba(57, 255, 20, 0.4);
+
+  --neon-red: #ff3366;
+  --neon-red-glow: rgba(255, 51, 102, 0.4);
+
+  --neon-yellow: #ffcc00;
+  --neon-yellow-glow: rgba(255, 204, 0, 0.4);
+
+  /* Text Colors */
+  --text-primary: #f5f6f9;
+  --text-secondary: #8f9cae;
+  --text-muted: #576574;
+  --text-neon: #a155ec;
+
+  /* Fonts */
+  --font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Border Radius */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  /* Shadows & Glows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.7);
+  
+  --glow-purple: 0 0 15px rgba(138, 43, 226, 0.5);
+  --glow-cyan: 0 0 15px rgba(0, 240, 255, 0.5);
+  --glow-green: 0 0 15px rgba(57, 255, 20, 0.5);
+  --glow-red: 0 0 15px rgba(255, 51, 102, 0.5);
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.5s ease;
+
+  /* Layout */
+  --sidebar-width: 260px;
+  --header-height: 70px;
+}
+
+/* Base resets & animations tokens */
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.6;
+    box-shadow: 0 0 10px var(--neon-purple-glow);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 20px var(--neon-purple-glow), 0 0 30px var(--neon-purple);
+  }
+}
+
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+    text-shadow: 0 0 4px #fff, 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan-glow);
+    opacity: 1;
+  }
+  20%, 24%, 55% {
+    text-shadow: none;
+    opacity: 0.7;
+  }
+}
