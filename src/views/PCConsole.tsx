@@ -506,7 +506,7 @@ export const PCConsole: React.FC = () => {
               )}
 
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid rgba(255,255,255,0.03)', paddingTop: '8px' }}>
-                IP: {pc.ipAddress} | Tarifa: ${pc.hourlyRate.toFixed(2)}/h
+                IP: {pc.ipAddress} | Tarifa: ${(Number(pc.hourlyRate) || 0).toFixed(2)}/h
               </div>
 
               {/* Actions Box */}

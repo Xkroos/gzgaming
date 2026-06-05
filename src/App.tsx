@@ -64,9 +64,9 @@ const MainAppContent: React.FC = () => {
   const [loginError, setLoginError] = useState('');
 
   // Handle Login
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = loginUser(loginUsername, loginPassword);
+    const success = await loginUser(loginUsername, loginPassword);
     if (!success) {
       setLoginError('Usuario o contraseña incorrectos, o cuenta inactiva.');
     } else {
@@ -79,6 +79,9 @@ const MainAppContent: React.FC = () => {
         } else {
           setActiveView('dashboard');
         }
+      } else {
+        toast.success('Sesión iniciada', `Bienvenido.`);
+        setActiveView('pc-console');
       }
       setLoginUsername('');
       setLoginPassword('');

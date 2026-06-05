@@ -295,19 +295,23 @@ export const Payments: React.FC = () => {
     setReceiptProvided(false);
   };
 
-  const handleCloseShift = (e: React.FormEvent) => {
+  const handleCloseShift = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const report = closeShift({
+      const report = await closeShift({
         cashUsd: cashUsdInHand,
         cashVes: cashVesInHand,
         notes: shiftNotes
       });
-      setGeneratedClosingReport(report);
-      setCashUsdInHand(0);
-      setCashVesInHand(0);
-      setShiftNotes('');
-      toast.success('✅ Caja Cerrada', `Turno finalizado. Total: $${report.totalUsdGenerated.toFixed(2)}`);
+      if (report) {
+        setGeneratedClosingReport(report);
+        setCashUsdInHand(0);
+        setCashVesInHand(0);
+        setShiftNotes('');
+        toast.success('✅ Caja Cerrada', `Turno finalizado. Total: $${report.totalUsdGenerated.toFixed(2)}`);
+      } else {
+        toast.error('Error al cerrar caja', 'No se pudo generar el reporte del servidor.');
+      }
     } catch (err) {
       toast.error('Error al cerrar caja', String(err));
     }

@@ -21,6 +21,17 @@ CREATE TYPE credential_category AS ENUM ('PC Login', 'Steam', 'Epic Games', 'Rio
 -- 2. TABLAS PRINCIPALES
 -- -------------------------------------------------------------
 
+-- Tabla de Tipos de Consolas (Categorías)
+CREATE TABLE console_types (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    emoji VARCHAR(10) NOT NULL,
+    hourly_rate DECIMAL(10, 2) NOT NULL DEFAULT 2.00 CHECK (hourly_rate >= 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Tabla de Usuarios (Personal)
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -41,6 +52,11 @@ CREATE TABLE pcs (
     status pc_status NOT NULL DEFAULT 'Disponible',
     hourly_rate DECIMAL(10, 2) NOT NULL DEFAULT 2.00 CHECK (hourly_rate >= 0),
     details TEXT,
+    console_type_id UUID REFERENCES console_types(id) ON DELETE SET NULL,
+    remaining_time INT NOT NULL DEFAULT 0,
+    total_assigned_time INT NOT NULL DEFAULT 0,
+    client_name VARCHAR(100),
+    current_session_id VARCHAR(50),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -87,7 +103,7 @@ CREATE TABLE sessions (
 -- Tabla de Pagos
 CREATE TABLE payments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
+    session_id VARCHAR(50),
     operator_id UUID REFERENCES users(id) ON DELETE RESTRICT, -- Operador que cobró
     validator_id UUID REFERENCES users(id) ON DELETE SET NULL, -- Admin que validó el pago
     amount_usd DECIMAL(10, 2) NOT NULL CHECK (amount_usd >= 0),
@@ -106,6 +122,7 @@ CREATE TABLE inventory (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name VARCHAR(100) NOT NULL,
     description TEXT,
+    purchase_price DECIMAL(10, 2) NOT NULL DEFAULT 0.00 CHECK (purchase_price >= 0),
     price_usd DECIMAL(10, 2) NOT NULL CHECK (price_usd >= 0),
     stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
     min_stock INT NOT NULL DEFAULT 5 CHECK (min_stock >= 0),
@@ -188,15 +205,16 @@ CREATE TRIGGER update_users_modtime BEFORE UPDATE ON users FOR EACH ROW EXECUTE 
 CREATE TRIGGER update_pcs_modtime BEFORE UPDATE ON pcs FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_inventory_modtime BEFORE UPDATE ON inventory FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 CREATE TRIGGER update_credentials_modtime BEFORE UPDATE ON credentials FOR EACH ROW EXECUTE FUNCTION update_modified_column();
+CREATE TRIGGER update_console_types_modtime BEFORE UPDATE ON console_types FOR EACH ROW EXECUTE FUNCTION update_modified_column();
 
 -- -------------------------------------------------------------
 -- 5. POLÍTICAS DE SEGURIDAD (ROW LEVEL SECURITY - RLS)
 -- -------------------------------------------------------------
--- Habilitar RLS en las tablas críticas de finanzas e inventario
-ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
-ALTER TABLE shift_closings ENABLE ROW LEVEL SECURITY;
+-- Deshabilitar RLS en las tablas críticas de finanzas e inventario
+ALTER TABLE payments DISABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory DISABLE ROW LEVEL SECURITY;
+ALTER TABLE shift_closings DISABLE ROW LEVEL SECURITY;
 
 -- Asumimos el uso de variables de sesión en PostgreSQL cargadas por el backend
 -- e.g. SET LOCAL app.current_user_role = 'Operador';

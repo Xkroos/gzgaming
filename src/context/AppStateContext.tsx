@@ -169,7 +169,7 @@ interface AppStateContextType {
   isBcvLoading: boolean;
   
   // Auth simulation
-  loginUser: (username: string, password?: string) => boolean;
+  loginUser: (username: string, password?: string) => Promise<boolean>;
   logoutUser: () => void;
   
   // BCV Rate
@@ -192,7 +192,7 @@ interface AppStateContextType {
   rejectPayment: (paymentId: string) => void;
   
   // Shift Closings
-  closeShift: (details: { cashUsd: number; cashVes: number; notes: string }) => ShiftClosing;
+  closeShift: (details: { cashUsd: number; cashVes: number; notes: string }) => Promise<ShiftClosing | null>;
   
   // Staff CRUD
   addUser: (username: string, fullName: string, role: UserRole, password?: string) => void;
@@ -237,173 +237,42 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return saved ? JSON.parse(saved) : null;
   });
 
-  const [users, setUsers] = useState<User[]>(() => {
-    const saved = localStorage.getItem('gz_users');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const migrated = parsed.map((u: any) => ({
-        ...u,
-        password: u.password ?? u.username
-      }));
-      return migrated;
-    }
-    const initialUsers: User[] = [
-      { id: 'usr-1', username: 'admin', fullName: 'Carlos Mendoza', password: 'admin', role: 'Admin', status: 'Activo', createdAt: new Date().toISOString() },
-      { id: 'usr-2', username: 'supervisor', fullName: 'Elena Rivas', password: 'supervisor', role: 'Encargado', status: 'Activo', createdAt: new Date().toISOString() },
-      { id: 'usr-3', username: 'operador1', fullName: 'Juan Torres', password: 'operador1', role: 'Operador', status: 'Activo', createdAt: new Date().toISOString() },
-    ];
-    localStorage.setItem('gz_users', JSON.stringify(initialUsers));
-    return initialUsers;
-  });
-
-  // Console Types
-  const [consoleTypes, setConsoleTypes] = useState<ConsoleType[]>(() => {
-    const saved = localStorage.getItem('gz_console_types');
-    if (saved) return JSON.parse(saved);
-    const initial: ConsoleType[] = [
-      { id: 'ct-1', name: 'PC Gaming', emoji: '🖥️', hourlyRate: 2.00, isActive: true },
-      { id: 'ct-2', name: 'PlayStation 5', emoji: '🎮', hourlyRate: 3.00, isActive: true },
-      { id: 'ct-3', name: 'Simulador', emoji: '🏎️', hourlyRate: 5.00, isActive: true },
-      { id: 'ct-4', name: 'Nintendo Switch', emoji: '🕹️', hourlyRate: 2.50, isActive: true },
-    ];
-    localStorage.setItem('gz_console_types', JSON.stringify(initial));
-    return initial;
-  });
-
-  const [globalHourlyRate, setGlobalHourlyRate] = useState<number>(() => {
-    const saved = localStorage.getItem('gz_global_rate');
-    return saved ? parseFloat(saved) : 2.00;
-  });
-
-  const [pcs, setPcs] = useState<PC[]>(() => {
-    const saved = localStorage.getItem('gz_pcs');
-    if (saved) return JSON.parse(saved);
-    const initialPcs: PC[] = Array.from({ length: 10 }, (_, i) => {
-      const id = `PC-${String(i + 1).padStart(2, '0')}`;
-      return {
-        id,
-        pcName: `Gaming Zone ${id}`,
-        ipAddress: `192.168.1.${100 + i}`,
-        status: 'Disponible',
-        hourlyRate: 2.00,
-        details: 'Core i7-12700K, RTX 3070, 32GB RAM, Pantalla 144Hz',
-        remainingTime: 0,
-        totalAssignedTime: 0,
-        consoleTypeId: 'ct-1',
-      };
-    });
-    localStorage.setItem('gz_pcs', JSON.stringify(initialPcs));
-    return initialPcs;
-  });
-
-  const [plans, setPlans] = useState<Plan[]>(() => {
-    const saved = localStorage.getItem('gz_plans');
-    if (saved) return JSON.parse(saved);
-    const initialPlans: Plan[] = [
-      { id: 'pl-1', name: 'Plan 1 Hora', description: 'Acceso estándar a PC por 1 hora', durationMinutes: 60, priceUsd: 2.00, isActive: true },
-      { id: 'pl-2', name: 'Plan 3 Horas', description: 'Acceso con descuento por 3 horas', durationMinutes: 180, priceUsd: 5.00, isActive: true },
-      { id: 'pl-3', name: 'Plan Nocturno (Night Shift)', description: 'Juega toda la noche desde las 10 PM a 6 AM', durationMinutes: 480, priceUsd: 10.00, isActive: true },
-    ];
-    localStorage.setItem('gz_plans', JSON.stringify(initialPlans));
-    return initialPlans;
-  });
-
-  const [offers, setOffers] = useState<Offer[]>(() => {
-    const saved = localStorage.getItem('gz_offers');
-    if (saved) return JSON.parse(saved);
-    const initialOffers: Offer[] = [
-      { id: 'of-1', name: 'Lunes de Locura 50%', description: '50% de descuento en tarifas por hora los lunes', discountPercentage: 50, dayOfWeek: 1, isActive: true },
-      { id: 'of-2', name: 'Combo Miércoles Gamer', description: '30% de descuento en la tarifa', discountPercentage: 30, dayOfWeek: 3, isActive: true },
-    ];
-    localStorage.setItem('gz_offers', JSON.stringify(initialOffers));
-    return initialOffers;
-  });
-
-  const [payments, setPayments] = useState<Payment[]>(() => {
-    const saved = localStorage.getItem('gz_payments');
-    if (saved) return JSON.parse(saved);
-    const initialPayments: Payment[] = [];
-    localStorage.setItem('gz_payments', JSON.stringify(initialPayments));
-    return initialPayments;
-  });
-
-  const [inventory, setInventory] = useState<InventoryItem[]>(() => {
-    const saved = localStorage.getItem('gz_inventory');
-    if (saved) {
-      // Migrate existing data to include purchasePrice if missing
-      const parsed = JSON.parse(saved);
-      const migrated = parsed.map((item: any) => ({
-        ...item,
-        purchasePrice: item.purchasePrice ?? Math.round(item.priceUsd * 0.6 * 100) / 100
-      }));
-      return migrated;
-    }
-    const initialInventory: InventoryItem[] = [
-      { id: 'inv-1', name: 'Coca-Cola 355ml', description: 'Lata fría', purchasePrice: 0.80, priceUsd: 1.50, stock: 24, minStock: 5, category: 'Bebidas' },
-      { id: 'inv-2', name: 'Pepsi 355ml', description: 'Lata fría', purchasePrice: 0.65, priceUsd: 1.25, stock: 15, minStock: 5, category: 'Bebidas' },
-      { id: 'inv-3', name: 'Doritos Mega', description: 'Bolsa grande sabor queso', purchasePrice: 1.20, priceUsd: 2.00, stock: 10, minStock: 3, category: 'Snacks' },
-      { id: 'inv-4', name: 'Papas Lays', description: 'Sabor natural bolsa mediana', purchasePrice: 1.00, priceUsd: 1.75, stock: 4, minStock: 5, category: 'Snacks' },
-    ];
-    localStorage.setItem('gz_inventory', JSON.stringify(initialInventory));
-    return initialInventory;
-  });
-
-  const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>(() => {
-    const saved = localStorage.getItem('gz_inventory_logs');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [shiftClosings, setShiftClosings] = useState<ShiftClosing[]>(() => {
-    const saved = localStorage.getItem('gz_shift_closings');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [credentials, setCredentials] = useState<Credential[]>(() => {
-    const saved = localStorage.getItem('gz_credentials');
-    if (saved) return JSON.parse(saved);
-    const initialCreds: Credential[] = [
-      { id: 'cr-1', entityName: 'PC-01 Windows Access', loginUsername: 'AdminGZ01', loginPassword: 'GZPassWord_01', category: 'PC Login', notes: 'Acceso de red local' },
-      { id: 'cr-2', entityName: 'Steam Acc 01 (CS2 / Dota2)', loginUsername: 'gz_valvesteam1', loginPassword: 'SteamSecureKey2026', category: 'Steam', notes: 'Cuenta pública con skins' },
-      { id: 'cr-3', entityName: 'Riot Games Acc (Valorant)', loginUsername: 'gamezone_riot_02', loginPassword: 'RiotAccountZone26', category: 'Riot Games', notes: 'Rango Platino 2' },
-    ];
-    localStorage.setItem('gz_credentials', JSON.stringify(initialCreds));
-    return initialCreds;
-  });
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    const saved = localStorage.getItem('gz_audit_logs');
-    if (saved) return JSON.parse(saved);
-    const initialLogs: AuditLog[] = [
-      { id: 'log-1', username: 'System', role: 'System', action: 'STARTUP', details: 'Inicialización de la base de datos local de Game Zone', status: 'Éxito', createdAt: new Date().toISOString() }
-    ];
-    localStorage.setItem('gz_audit_logs', JSON.stringify(initialLogs));
-    return initialLogs;
-  });
+  const [users, setUsers] = useState<User[]>([]);
+  const [consoleTypes, setConsoleTypes] = useState<ConsoleType[]>([]);
+  const [globalHourlyRate, setGlobalHourlyRate] = useState<number>(2.00);
+  const [pcs, setPcs] = useState<PC[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryLogs, setInventoryLogs] = useState<InventoryLog[]>([]);
+  const [shiftClosings, setShiftClosings] = useState<ShiftClosing[]>([]);
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
   // -------------------------------------------------------------
-  // HELPER FOR WRITING TO LOCALSTORAGE & AUDIT LOGS
+  // HELPER FOR WRITING TO AUDIT LOGS IN DATABASE
   // -------------------------------------------------------------
-  const writeLog = (action: string, details: string, status: 'Éxito' | 'Fallo' | 'Advertencia' = 'Éxito') => {
-    const newLog: AuditLog = {
-      id: `log-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      userId: currentUser?.id,
-      username: currentUser?.fullName || 'System',
-      role: currentUser?.role || 'System',
-      action,
-      details,
-      status,
-      createdAt: new Date().toISOString(),
-    };
-    setAuditLogs((prev) => {
-      const updated = [newLog, ...prev].slice(0, 1000); // limit to 1000 items
-      localStorage.setItem('gz_audit_logs', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  // Sync state helpers
-  const saveToDisk = (key: string, data: any) => {
-    localStorage.setItem(key, JSON.stringify(data));
+  const writeLog = async (action: string, details: string, status: 'Éxito' | 'Fallo' | 'Advertencia' = 'Éxito') => {
+    try {
+      const res = await fetch('/api/audit-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: currentUser?.fullName || 'System',
+          role: currentUser?.role || 'System',
+          action,
+          details,
+          status
+        })
+      });
+      if (res.ok) {
+        const newLog = await res.json();
+        setAuditLogs(prev => [newLog, ...prev]);
+      }
+    } catch (e) {
+      console.error("Failed to write audit log to database:", e);
+    }
   };
 
   // -------------------------------------------------------------
@@ -430,50 +299,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     fetchBcvRate();
-    // Auto-fetch hourly
     const interval = setInterval(fetchBcvRate, 3600000);
     return () => clearInterval(interval);
   }, []);
-
-  // Sync PCs from Local server on startup
-  useEffect(() => {
-    const fetchPcsFromServer = async () => {
-      try {
-        const res = await fetch('http://localhost:5000/api/pcs');
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
-            setPcs(data);
-            localStorage.setItem('gz_pcs', JSON.stringify(data));
-          }
-        }
-      } catch (e) {
-        console.log("Server offline, using localStorage for PCs.");
-      }
-    };
-    fetchPcsFromServer();
-  }, []);
-
-  // Sync PCs to Local server on state changes
-  useEffect(() => {
-    const syncPcsToServer = async () => {
-      try {
-        await fetch('http://localhost:5000/api/pcs', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(pcs),
-        });
-      } catch (e) {
-        // Silent catch: server might be offline
-      }
-    };
-    if (pcs.length > 0) {
-      localStorage.setItem('gz_pcs', JSON.stringify(pcs));
-      syncPcsToServer();
-    }
-  }, [pcs]);
 
   const updateBcvRateManually = (rate: number) => {
     setBcvRate(rate);
@@ -481,15 +309,123 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // -------------------------------------------------------------
+  // FETCH ALL DATA FROM DATABASE PERIODICALLY
+  // -------------------------------------------------------------
+  const fetchAllData = async () => {
+    try {
+      const endpoints = {
+        users: '/api/users',
+        consoleTypes: '/api/console-types',
+        pcs: '/api/pcs',
+        plans: '/api/plans',
+        offers: '/api/offers',
+        payments: '/api/payments',
+        inventory: '/api/inventory',
+        inventoryLogs: '/api/inventory-logs',
+        shiftClosings: '/api/shift-closings',
+        credentials: '/api/credentials',
+        auditLogs: '/api/audit-logs',
+      };
+
+      const [
+        usersRes,
+        consoleTypesRes,
+        pcsRes,
+        plansRes,
+        offersRes,
+        paymentsRes,
+        inventoryRes,
+        inventoryLogsRes,
+        shiftClosingsRes,
+        credentialsRes,
+        auditLogsRes
+      ] = await Promise.all([
+        fetch(endpoints.users).then(r => r.json()),
+        fetch(endpoints.consoleTypes).then(r => r.json()),
+        fetch(endpoints.pcs).then(r => r.json()),
+        fetch(endpoints.plans).then(r => r.json()),
+        fetch(endpoints.offers).then(r => r.json()),
+        fetch(endpoints.payments).then(r => r.json()),
+        fetch(endpoints.inventory).then(r => r.json()),
+        fetch(endpoints.inventoryLogs).then(r => r.json()),
+        fetch(endpoints.shiftClosings).then(r => r.json()),
+        fetch(endpoints.credentials).then(r => r.json()),
+        fetch(endpoints.auditLogs).then(r => r.json()),
+      ]);
+
+      if (Array.isArray(usersRes)) setUsers(usersRes);
+      if (Array.isArray(consoleTypesRes)) setConsoleTypes(consoleTypesRes);
+      if (Array.isArray(pcsRes)) setPcs(pcsRes);
+      if (Array.isArray(plansRes)) setPlans(plansRes);
+      if (Array.isArray(offersRes)) setOffers(offersRes);
+      if (Array.isArray(paymentsRes)) setPayments(paymentsRes);
+      if (Array.isArray(inventoryRes)) setInventory(inventoryRes);
+      if (Array.isArray(inventoryLogsRes)) setInventoryLogs(inventoryLogsRes);
+      if (Array.isArray(shiftClosingsRes)) setShiftClosings(shiftClosingsRes);
+      if (Array.isArray(credentialsRes)) setCredentials(credentialsRes);
+      if (Array.isArray(auditLogsRes)) setAuditLogs(auditLogsRes);
+    } catch (error) {
+      console.error('Error fetching data from API server:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 5000);
+    return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // -------------------------------------------------------------
+  // TIMER TICKER FOR GAME PCs (Client-side smooth UI update)
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPcs((prevPcs) => {
+        return prevPcs.map((pc) => {
+          if (pc.status === 'En Uso' && pc.remainingTime > 0) {
+            const newTime = pc.remainingTime - 1;
+            if (newTime === 0) {
+              return {
+                ...pc,
+                remainingTime: 0,
+                status: 'Bloqueada' as PCStatus,
+              };
+            }
+            return {
+              ...pc,
+              remainingTime: newTime,
+            };
+          }
+          return pc;
+        });
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentUser]);
+
+  // -------------------------------------------------------------
+  // PC OPERATION ACTIONS
+  // -------------------------------------------------------------
+  // -------------------------------------------------------------
   // REAL AUTHENTICATION
   // -------------------------------------------------------------
-  const loginUser = (username: string, password?: string): boolean => {
-    const user = users.find(u => u.username.toLowerCase() === username.toLowerCase() && u.status === 'Activo');
-    if (user && (user.password === password || !user.password)) {
-      setCurrentUser(user);
-      localStorage.setItem('gz_current_user', JSON.stringify(user));
-      writeLog('LOGIN', `Inicio de sesión exitoso como ${user.fullName} (${user.role})`, 'Éxito');
-      return true;
+  const loginUser = async (username: string, password?: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      if (res.ok) {
+        const user = await res.json();
+        setCurrentUser(user);
+        localStorage.setItem('gz_current_user', JSON.stringify(user));
+        writeLog('LOGIN', `Inicio de sesión exitoso como ${user.fullName} (${user.role})`, 'Éxito');
+        return true;
+      }
+    } catch (e) {
+      console.error("Login request failed:", e);
     }
     writeLog('LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
     return false;
@@ -504,278 +440,235 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // -------------------------------------------------------------
-  // TIMER TICKER FOR GAME PCS
-  // -------------------------------------------------------------
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setPcs((prevPcs) => {
-        let changed = false;
-        const updated = prevPcs.map((pc) => {
-          if (pc.status === 'En Uso' && pc.remainingTime > 0) {
-            changed = true;
-            const newTime = pc.remainingTime - 1;
-            if (newTime === 0) {
-              // PC locks!
-              writeLog('PC_LOCK', `El tiempo de juego en ${pc.id} llegó a 0. Pantalla bloqueada automáticamente.`, 'Advertencia');
-              return {
-                ...pc,
-                remainingTime: 0,
-                status: 'Bloqueada' as PCStatus,
-              };
-            }
-            return {
-              ...pc,
-              remainingTime: newTime,
-            };
-          }
-          return pc;
-        });
-
-        if (changed) {
-          saveToDisk('gz_pcs', updated);
-        }
-        return updated;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [currentUser]);
-
-  // -------------------------------------------------------------
   // PC OPERATION ACTIONS
   // -------------------------------------------------------------
-  const assignPC = (pcId: string, clientName: string, durationMinutes: number, offerId?: string, planId?: string) => {
-    setPcs((prevPcs) => {
-      const updated = prevPcs.map((pc) => {
-        if (pc.id === pcId) {
-          const seconds = durationMinutes * 60;
-          let hourlyRate = pc.hourlyRate;
-          let finalPrice = (durationMinutes / 60) * hourlyRate;
-          let offerDesc = '';
+  const assignPC = async (pcId: string, clientName: string, durationMinutes: number, offerId?: string, planId?: string) => {
+    const seconds = durationMinutes * 60;
+    const pc = pcs.find(p => p.id === pcId);
+    if (!pc) return;
+    let hourlyRate = pc.hourlyRate;
+    let finalPrice = (durationMinutes / 60) * hourlyRate;
+    let offerDesc = '';
 
-          // Apply plan price if selected
-          if (planId) {
-            const plan = plans.find(p => p.id === planId);
-            if (plan) {
-              finalPrice = plan.priceUsd;
-              hourlyRate = (plan.priceUsd / plan.durationMinutes) * 60;
-            }
-          }
+    if (planId) {
+      const plan = plans.find(p => p.id === planId);
+      if (plan) {
+        finalPrice = plan.priceUsd;
+        hourlyRate = (plan.priceUsd / plan.durationMinutes) * 60;
+      }
+    }
 
-          // Apply discount offer if selected
-          if (offerId) {
-            const offer = offers.find(o => o.id === offerId);
-            if (offer) {
-              finalPrice = finalPrice * (1 - offer.discountPercentage / 100);
-              offerDesc = `${offer.name} (${offer.discountPercentage}% desc)`;
-            }
-          }
+    if (offerId) {
+      const offer = offers.find(o => o.id === offerId);
+      if (offer) {
+        finalPrice = finalPrice * (1 - offer.discountPercentage / 100);
+        offerDesc = `${offer.name} (${offer.discountPercentage}% desc)`;
+      }
+    }
 
-          writeLog('PC_ASSIGN', `Asignado ${pc.id} a "${clientName}" por ${durationMinutes} min. Precio: $${finalPrice.toFixed(2)}. ${offerDesc ? `Oferta: ${offerDesc}` : ''}`, 'Éxito');
-          
-          return {
-            ...pc,
-            status: 'En Uso' as PCStatus,
-            remainingTime: seconds,
-            totalAssignedTime: seconds,
-            clientName,
-            currentSessionId: `sess-${Date.now()}`,
-          };
-        }
-        return pc;
+    const sessionId = `sess-${Date.now()}`;
+
+    try {
+      await fetch(`/api/pcs/${pcId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'En Uso',
+          remainingTime: seconds,
+          totalAssignedTime: seconds,
+          clientName,
+          currentSessionId: sessionId,
+        })
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      
+      writeLog('PC_ASSIGN', `Asignado ${pcId} a "${clientName}" por ${durationMinutes} min. Precio: $${finalPrice.toFixed(2)}. ${offerDesc ? `Oferta: ${offerDesc}` : ''}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error("Failed to assign PC on database:", e);
+    }
   };
 
-  const releasePC = (pcId: string) => {
-    setPcs((prevPcs) => {
-      const updated = prevPcs.map((pc) => {
-        if (pc.id === pcId) {
-          writeLog('PC_RELEASE', `PC ${pc.id} liberada manualmente. Se eliminó el tiempo restante.`, 'Éxito');
-          return {
-            ...pc,
-            status: 'Disponible' as PCStatus,
-            remainingTime: 0,
-            totalAssignedTime: 0,
-            clientName: undefined,
-            currentSessionId: undefined,
-          };
-        }
-        return pc;
+  const releasePC = async (pcId: string) => {
+    try {
+      await fetch(`/api/pcs/${pcId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'Disponible',
+          remainingTime: 0,
+          totalAssignedTime: 0,
+          clientName: null,
+          currentSessionId: null,
+        })
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      writeLog('PC_RELEASE', `PC ${pcId} liberada manualmente. Se eliminó el tiempo restante.`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const pausePC = (pcId: string) => {
-    setPcs((prevPcs) => {
-      const updated = prevPcs.map((pc) => {
-        if (pc.id === pcId && pc.status === 'En Uso') {
-          writeLog('PC_PAUSE', `Sesión pausada en ${pc.id}`, 'Éxito');
-          return { ...pc, status: 'Suspendida' as PCStatus };
-        }
-        return pc;
+  const pausePC = async (pcId: string) => {
+    try {
+      await fetch(`/api/pcs/${pcId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Suspendida' })
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      writeLog('PC_PAUSE', `Sesión pausada en ${pcId}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const resumePC = (pcId: string) => {
-    setPcs((prevPcs) => {
-      const updated = prevPcs.map((pc) => {
-        if (pc.id === pcId && pc.status === 'Suspendida') {
-          writeLog('PC_RESUME', `Sesión reanudada en ${pc.id}`, 'Éxito');
-          return { ...pc, status: 'En Uso' as PCStatus };
-        }
-        return pc;
+  const resumePC = async (pcId: string) => {
+    try {
+      await fetch(`/api/pcs/${pcId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'En Uso' })
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      writeLog('PC_RESUME', `Sesión reanudada en ${pcId}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addTimeToPC = (pcId: string, additionalMinutes: number) => {
-    setPcs((prevPcs) => {
-      const updated = prevPcs.map((pc) => {
-        if (pc.id === pcId && (pc.status === 'En Uso' || pc.status === 'Bloqueada')) {
-          const additionalSeconds = additionalMinutes * 60;
-          writeLog('PC_ADD_TIME', `Agregados ${additionalMinutes} min a ${pc.id}`, 'Éxito');
-          return {
-            ...pc,
-            status: 'En Uso' as PCStatus,
-            remainingTime: pc.remainingTime + additionalSeconds,
-            totalAssignedTime: pc.totalAssignedTime + additionalSeconds,
-          };
-        }
-        return pc;
+  const addTimeToPC = async (pcId: string, additionalMinutes: number) => {
+    const pc = pcs.find(p => p.id === pcId);
+    if (!pc) return;
+    const additionalSeconds = additionalMinutes * 60;
+    try {
+      await fetch(`/api/pcs/${pcId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'En Uso',
+          remainingTime: pc.remainingTime + additionalSeconds,
+          totalAssignedTime: pc.totalAssignedTime + additionalSeconds,
+        })
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      writeLog('PC_ADD_TIME', `Agregados ${additionalMinutes} min a ${pcId}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addPC = (pcData: Omit<PC, 'id' | 'status' | 'remainingTime' | 'totalAssignedTime'>) => {
+  const addPC = async (pcData: Omit<PC, 'id' | 'status' | 'remainingTime' | 'totalAssignedTime'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newPC: PC = {
-      ...pcData,
-      id: pcData.pcName.trim().toUpperCase(),
-      status: 'Disponible',
-      remainingTime: 0,
-      totalAssignedTime: 0,
-    };
-    setPcs((prev) => {
-      const updated = [...prev, newPC];
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
-    writeLog('PC_CREATE', `Equipo creado: ${newPC.id} (${newPC.pcName}) - IP: ${newPC.ipAddress}`, 'Éxito');
+    try {
+      const res = await fetch('/api/pcs/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: pcData.pcName.trim().toUpperCase(),
+          pcName: pcData.pcName,
+          ipAddress: pcData.ipAddress,
+          hourlyRate: pcData.hourlyRate,
+          details: pcData.details,
+          consoleTypeId: pcData.consoleTypeId
+        })
+      });
+      if (res.ok) {
+        const newPC = await res.json();
+        writeLog('PC_CREATE', `Equipo creado: ${newPC.id} (${newPC.pcName}) - IP: ${newPC.ipAddress}`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updatePC = (id: string, updatedFields: Partial<PC>) => {
+  const updatePC = async (id: string, updatedFields: Partial<PC>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    setPcs((prev) => {
-      const updated = prev.map((pc) => {
-        if (pc.id === id) {
-          const up = { ...pc, ...updatedFields };
-          writeLog('PC_UPDATE', `Equipo actualizado: ${up.id} - Estado: ${up.status}`, 'Éxito');
-          return up;
-        }
-        return pc;
+    try {
+      await fetch(`/api/pcs/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
       });
-      saveToDisk('gz_pcs', updated);
-      return updated;
-    });
+      writeLog('PC_UPDATE', `Equipo actualizado: ${id}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const deletePC = (id: string) => {
+  const deletePC = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const pc = pcs.find(p => p.id === id);
-    if (pc) {
-      setPcs((prev) => {
-        const updated = prev.filter(p => p.id !== id);
-        saveToDisk('gz_pcs', updated);
-        return updated;
+    try {
+      await fetch(`/api/pcs/${id}`, {
+        method: 'DELETE'
       });
-      writeLog('PC_DELETE', `Equipo eliminado: ${pc.id}`, 'Éxito');
+      writeLog('PC_DELETE', `Equipo eliminado: ${id}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
   // -------------------------------------------------------------
   // PAYMENTS MANAGEMENT
   // -------------------------------------------------------------
-  const registerPayment = (paymentData: Omit<Payment, 'id' | 'operatorId' | 'operatorName' | 'status' | 'createdAt'>) => {
+  const registerPayment = async (paymentData: Omit<Payment, 'id' | 'operatorId' | 'operatorName' | 'status' | 'createdAt'>) => {
     if (!currentUser) return;
-    const newPayment: Payment = {
-      ...paymentData,
-      id: `pay-${Date.now()}`,
-      operatorId: currentUser.id,
-      operatorName: currentUser.fullName,
-      status: 'Pendiente',
-      createdAt: new Date().toISOString(),
-    };
-
-    setPayments((prev) => {
-      const updated = [newPayment, ...prev];
-      saveToDisk('gz_payments', updated);
-      return updated;
-    });
-
-    writeLog('PAYMENT_REGISTER', `Pago registrado por ${currentUser.fullName}: $${paymentData.amountUsd.toFixed(2)} (${paymentData.amountVes.toFixed(2)} VES) via ${paymentData.paymentMethod}${paymentData.reference ? ` Ref: ${paymentData.reference}` : ''}`, 'Éxito');
+    try {
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...paymentData,
+          operatorId: currentUser.id
+        })
+      });
+      if (res.ok) {
+        writeLog('PAYMENT_REGISTER', `Pago registrado por ${currentUser.fullName}: $${paymentData.amountUsd.toFixed(2)} (${paymentData.amountVes.toFixed(2)} VES) via ${paymentData.paymentMethod}`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const validatePayment = (paymentId: string) => {
+  const validatePayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
-    setPayments((prev) => {
-      const updated = prev.map((pay) => {
-        if (pay.id === paymentId) {
-          writeLog('PAYMENT_VALIDATE', `Administrador ${currentUser.fullName} validó el pago ${pay.id} por $${pay.amountUsd.toFixed(2)}`, 'Éxito');
-          return {
-            ...pay,
-            status: 'Validado' as PaymentStatus,
-            validatorId: currentUser.id,
-            validatorName: currentUser.fullName,
-            validatedAt: new Date().toISOString(),
-          };
-        }
-        return pay;
+    try {
+      await fetch(`/api/payments/${paymentId}/validate`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ validatorId: currentUser.id })
       });
-      saveToDisk('gz_payments', updated);
-      return updated;
-    });
+      writeLog('PAYMENT_VALIDATE', `Administrador ${currentUser.fullName} validó el pago ${paymentId}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const rejectPayment = (paymentId: string) => {
+  const rejectPayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
-    setPayments((prev) => {
-      const updated = prev.map((pay) => {
-        if (pay.id === paymentId) {
-          writeLog('PAYMENT_REJECT', `Administrador ${currentUser.fullName} rechazó el pago ${pay.id}`, 'Advertencia');
-          return {
-            ...pay,
-            status: 'Rechazado' as PaymentStatus,
-            validatorId: currentUser.id,
-            validatorName: currentUser.fullName,
-            validatedAt: new Date().toISOString(),
-          };
-        }
-        return pay;
+    try {
+      await fetch(`/api/payments/${paymentId}/reject`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ validatorId: currentUser.id })
       });
-      saveToDisk('gz_payments', updated);
-      return updated;
-    });
+      writeLog('PAYMENT_REJECT', `Administrador ${currentUser.fullName} rechazó el pago ${paymentId}`, 'Advertencia');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // -------------------------------------------------------------
   // SHIFT CLOSING (Cerrar Caja)
   // -------------------------------------------------------------
-  const closeShift = (details: { cashUsd: number; cashVes: number; notes: string }) => {
+  const closeShift = async (details: { cashUsd: number; cashVes: number; notes: string }) => {
     if (!currentUser) throw new Error('No user connected');
     
-    // Filter today's payments created by this operator
     const today = new Date().toDateString();
     const operatorPayments = payments.filter((p) => {
       const pDate = new Date(p.createdAt).toDateString();
@@ -790,7 +683,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .filter((p) => p.status === 'Validado' || p.status === 'Pendiente')
       .reduce((sum, p) => sum + p.amountVes, 0);
 
-    // Sum details methods
     const pmVes = operatorPayments
       .filter(p => p.paymentMethod === 'Pago Móvil')
       .reduce((sum, p) => sum + p.amountVes, 0);
@@ -799,15 +691,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .filter(p => p.paymentMethod === 'Punto de Venta')
       .reduce((sum, p) => sum + p.amountVes, 0);
 
-    // Simulated total game time (e.g. 180 min)
     const totalTimeMinutes = operatorPayments.length * 60; 
 
-    const newClosing: ShiftClosing = {
-      id: `shift-${Date.now()}`,
+    const bodyData = {
       operatorId: currentUser.id,
-      operatorName: currentUser.fullName,
-      startTime: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(), // mock shift start at 8:00 AM
-      endTime: new Date().toISOString(),
+      startTime: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(),
       totalUsdGenerated,
       totalVesGenerated,
       totalTimeMinutes,
@@ -818,307 +706,331 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         posVes: posVes,
         paymentsCount: operatorPayments.length,
         notes: details.notes,
-      },
-      createdAt: new Date().toISOString(),
+      }
     };
 
-    setShiftClosings((prev) => {
-      const updated = [newClosing, ...prev];
-      saveToDisk('gz_shift_closings', updated);
-      return updated;
-    });
-
-    writeLog('SHIFT_CLOSE', `Cierre de Caja registrado por ${currentUser.fullName}. USD Generado: $${totalUsdGenerated.toFixed(2)}, VES Generado: ${totalVesGenerated.toFixed(2)} Bs.`, 'Éxito');
-    return newClosing;
+    try {
+      const res = await fetch('/api/shift-closings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyData)
+      });
+      if (res.ok) {
+        const newClosing = await res.json();
+        writeLog('SHIFT_CLOSE', `Cierre de Caja registrado por ${currentUser.fullName}. USD Generado: $${totalUsdGenerated.toFixed(2)}, VES Generado: ${totalVesGenerated.toFixed(2)} Bs.`, 'Éxito');
+        fetchAllData();
+        return newClosing;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return null;
   };
 
   // -------------------------------------------------------------
   // STAFF MANAGEMENT (CRUD)
   // -------------------------------------------------------------
-  const addUser = (username: string, fullName: string, role: UserRole, password?: string) => {
+  const addUser = async (username: string, fullName: string, role: UserRole, password?: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
-    const newUser: User = {
-      id: `usr-${Date.now()}`,
-      username: username.toLowerCase().trim(),
-      fullName,
-      password: password || username.toLowerCase().trim(),
-      role,
-      status: 'Activo',
-      createdAt: new Date().toISOString(),
-    };
-    setUsers((prev) => {
-      const updated = [...prev, newUser];
-      saveToDisk('gz_users', updated);
-      return updated;
-    });
-    writeLog('USER_CREATE', `Usuario creado: ${fullName} con rol ${role}`, 'Éxito');
+    try {
+      const res = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, fullName, role, password })
+      });
+      if (res.ok) {
+        writeLog('USER_CREATE', `Usuario creado: ${fullName} con rol ${role}`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updateUser = (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => {
+  const updateUser = async (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
-    setUsers((prev) => {
-      const updated = prev.map((u) => {
-        if (u.id === id) {
-          writeLog('USER_UPDATE', `Usuario actualizado: ${fullName} (Rol: ${role}, Estado: ${status})`, 'Éxito');
-          const updatedUser = { ...u, fullName, role, status };
-          if (password) {
-            updatedUser.password = password;
-          }
-          return updatedUser;
-        }
-        return u;
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName, role, status, password })
       });
-      saveToDisk('gz_users', updated);
-      return updated;
-    });
+      if (res.ok) {
+        writeLog('USER_UPDATE', `Usuario actualizado: ${fullName} (Rol: ${role}, Estado: ${status})`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const deleteUser = (id: string) => {
+  const deleteUser = async (id: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
-    const user = users.find(u => u.id === id);
-    if (user) {
-      setUsers((prev) => {
-        const updated = prev.filter(u => u.id !== id);
-        saveToDisk('gz_users', updated);
-        return updated;
+    try {
+      await fetch(`/api/users/${id}`, {
+        method: 'DELETE'
       });
-      writeLog('USER_DELETE', `Usuario eliminado: ${user.fullName}`, 'Éxito');
+      writeLog('USER_DELETE', `Usuario inhabilitado ID: ${id}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
   // -------------------------------------------------------------
   // INVENTORY MANAGEMENT
   // -------------------------------------------------------------
-  const restockProduct = (id: string, amount: number, reason: string) => {
+  const restockProduct = async (id: string, amount: number, reason: string) => {
     if (!currentUser) return;
-    setInventory((prev) => {
-      const updated = prev.map((item) => {
-        if (item.id === id) {
-          const newStock = item.stock + amount;
-          
-          // Log restocking
-          const log: InventoryLog = {
-            id: `invlog-${Date.now()}`,
-            productId: item.id,
-            productName: item.name,
-            userName: currentUser.fullName,
-            changeAmount: amount,
-            reason,
-            createdAt: new Date().toISOString(),
-          };
-          setInventoryLogs((prevLogs) => {
-            const updatedLogs = [log, ...prevLogs];
-            saveToDisk('gz_inventory_logs', updatedLogs);
-            return updatedLogs;
-          });
-
-          writeLog('INV_RESTOCK', `Producto reabastecido: ${item.name} (+${amount} unidades). Motivo: ${reason}`, 'Éxito');
-          return { ...item, stock: newStock };
-        }
-        return item;
+    const item = inventory.find(i => i.id === id);
+    if (!item) return;
+    
+    try {
+      await fetch('/api/inventory-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: id,
+          changeAmount: amount,
+          reason,
+          userName: currentUser.fullName
+        })
       });
-      saveToDisk('gz_inventory', updated);
-      return updated;
-    });
+
+      await fetch(`/api/inventory/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stock: item.stock + amount
+        })
+      });
+
+      writeLog('INV_RESTOCK', `Producto reabastecido: ${item.name} (+${amount} unidades). Motivo: ${reason}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const sellProduct = (id: string, amount: number) => {
+  const sellProduct = async (id: string, amount: number) => {
     if (!currentUser) return;
-    setInventory((prev) => {
-      const updated = prev.map((item) => {
-        if (item.id === id) {
-          const newStock = Math.max(0, item.stock - amount);
-          
-          // Log sale
-          const log: InventoryLog = {
-            id: `invlog-${Date.now()}`,
-            productId: item.id,
-            productName: item.name,
-            userName: currentUser.fullName,
-            changeAmount: -amount,
-            reason: 'Venta Directa',
-            createdAt: new Date().toISOString(),
-          };
-          setInventoryLogs((prevLogs) => {
-            const updatedLogs = [log, ...prevLogs];
-            saveToDisk('gz_inventory_logs', updatedLogs);
-            return updatedLogs;
-          });
-
-          // Create standard transaction
-          const totalCostUsd = item.priceUsd * amount;
-          const totalCostVes = totalCostUsd * bcvRate;
-          registerPayment({
-            amountUsd: totalCostUsd,
-            amountVes: totalCostVes,
-            bcvRate,
-            paymentMethod: 'Efectivo $', // default payment
-            offerApplied: `Venta Inventario: ${item.name} x${amount}`,
-          });
-
-          writeLog('INV_SALE', `Producto vendido: ${item.name} (x${amount} unidades). Total: $${totalCostUsd.toFixed(2)}`, 'Éxito');
-          return { ...item, stock: newStock };
-        }
-        return item;
+    const item = inventory.find(i => i.id === id);
+    if (!item) return;
+    
+    try {
+      await fetch('/api/inventory-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          productId: id,
+          changeAmount: -amount,
+          reason: 'Venta Directa',
+          userName: currentUser.fullName
+        })
       });
-      saveToDisk('gz_inventory', updated);
-      return updated;
-    });
+
+      await fetch(`/api/inventory/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stock: Math.max(0, item.stock - amount)
+        })
+      });
+
+      const totalCostUsd = item.priceUsd * amount;
+      const totalCostVes = totalCostUsd * bcvRate;
+      
+      await registerPayment({
+        amountUsd: totalCostUsd,
+        amountVes: totalCostVes,
+        bcvRate,
+        paymentMethod: 'Efectivo $',
+        offerApplied: `Venta Inventario: ${item.name} x${amount}`,
+      });
+
+      writeLog('INV_SALE', `Producto vendido: ${item.name} (x${amount} unidades). Total: $${totalCostUsd.toFixed(2)}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addProduct = (productData: Omit<InventoryItem, 'id'>) => {
+  const addProduct = async (productData: Omit<InventoryItem, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newItem: InventoryItem = {
-      ...productData,
-      id: `inv-${Date.now()}`,
-    };
-    setInventory((prev) => {
-      const updated = [...prev, newItem];
-      saveToDisk('gz_inventory', updated);
-      return updated;
-    });
-    writeLog('INV_CREATE', `Nuevo producto en inventario: ${newItem.name} (Compra: $${newItem.purchasePrice.toFixed(2)}, Venta: $${newItem.priceUsd.toFixed(2)})`, 'Éxito');
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(productData)
+      });
+      if (res.ok) {
+        const newItem = await res.json();
+        writeLog('INV_CREATE', `Nuevo producto en inventario: ${newItem.name} (Compra: $${newItem.purchasePrice.toFixed(2)}, Venta: $${newItem.priceUsd.toFixed(2)})`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // -------------------------------------------------------------
   // PLANS & OFFERS
   // -------------------------------------------------------------
-  const addPlan = (planData: Omit<Plan, 'id' | 'isActive'>) => {
+  const addPlan = async (planData: Omit<Plan, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newPlan: Plan = {
-      ...planData,
-      id: `pl-${Date.now()}`,
-      isActive: true,
-    };
-    setPlans((prev) => {
-      const updated = [...prev, newPlan];
-      saveToDisk('gz_plans', updated);
-      return updated;
-    });
-    writeLog('PLAN_CREATE', `Plan creado: ${newPlan.name} ($${newPlan.priceUsd.toFixed(2)}, ${newPlan.durationMinutes} min)`, 'Éxito');
-  };
-
-  const updatePlan = (id: string, updatedFields: Partial<Plan>) => {
-    if (!currentUser || currentUser.role === 'Operador') return;
-    setPlans((prev) => {
-      const updated = prev.map((p) => {
-        if (p.id === id) {
-          const up = { ...p, ...updatedFields };
-          writeLog('PLAN_UPDATE', `Plan actualizado: ${up.name} ($${up.priceUsd.toFixed(2)}, Activo: ${up.isActive})`, 'Éxito');
-          return up;
-        }
-        return p;
+    try {
+      const res = await fetch('/api/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(planData)
       });
-      saveToDisk('gz_plans', updated);
-      return updated;
-    });
+      if (res.ok) {
+        const newPlan = await res.json();
+        writeLog('PLAN_CREATE', `Plan creado: ${newPlan.name} ($${newPlan.priceUsd.toFixed(2)}, ${newPlan.durationMinutes} min)`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const addOffer = (offerData: Omit<Offer, 'id' | 'isActive'>) => {
+  const updatePlan = async (id: string, updatedFields: Partial<Plan>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newOffer: Offer = {
-      ...offerData,
-      id: `of-${Date.now()}`,
-      isActive: true,
-    };
-    setOffers((prev) => {
-      const updated = [...prev, newOffer];
-      saveToDisk('gz_offers', updated);
-      return updated;
-    });
-    writeLog('OFFER_CREATE', `Oferta creada: ${newOffer.name} (${newOffer.discountPercentage}% desc)`, 'Éxito');
-  };
-
-  const updateOffer = (id: string, updatedFields: Partial<Offer>) => {
-    if (!currentUser || currentUser.role === 'Operador') return;
-    setOffers((prev) => {
-      const updated = prev.map((o) => {
-        if (o.id === id) {
-          const uo = { ...o, ...updatedFields };
-          writeLog('OFFER_UPDATE', `Oferta actualizada: ${uo.name} (${uo.discountPercentage}% desc, Activa: ${uo.isActive})`, 'Éxito');
-          return uo;
-        }
-        return o;
+    try {
+      const res = await fetch(`/api/plans/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
       });
-      saveToDisk('gz_offers', updated);
-      return updated;
-    });
+      if (res.ok) {
+        const up = await res.json();
+        writeLog('PLAN_UPDATE', `Plan actualizado: ${up.name} ($${up.priceUsd.toFixed(2)}, Activo: ${up.isActive})`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const addOffer = async (offerData: Omit<Offer, 'id' | 'isActive'>) => {
+    if (!currentUser || currentUser.role === 'Operador') return;
+    try {
+      const res = await fetch('/api/offers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(offerData)
+      });
+      if (res.ok) {
+        const newOffer = await res.json();
+        writeLog('OFFER_CREATE', `Oferta creada: ${newOffer.name} (${newOffer.discountPercentage}% desc)`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const updateOffer = async (id: string, updatedFields: Partial<Offer>) => {
+    if (!currentUser || currentUser.role === 'Operador') return;
+    try {
+      const res = await fetch(`/api/offers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
+      });
+      if (res.ok) {
+        const uo = await res.json();
+        writeLog('OFFER_UPDATE', `Oferta actualizada: ${uo.name} (${uo.discountPercentage}% desc, Activa: ${uo.isActive})`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // -------------------------------------------------------------
   // CREDENTIALS
   // -------------------------------------------------------------
-  const addCredential = (credData: Omit<Credential, 'id'>) => {
+  const addCredential = async (credData: Omit<Credential, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newCred: Credential = {
-      ...credData,
-      id: `cr-${Date.now()}`,
-    };
-    setCredentials((prev) => {
-      const updated = [...prev, newCred];
-      saveToDisk('gz_credentials', updated);
-      return updated;
-    });
-    writeLog('CRED_CREATE', `Credencial registrada: ${newCred.entityName} (${newCred.category})`, 'Éxito');
+    try {
+      const res = await fetch('/api/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credData)
+      });
+      if (res.ok) {
+        const newCred = await res.json();
+        writeLog('CRED_CREATE', `Credencial registrada: ${newCred.entityName} (${newCred.category})`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const deleteCredential = (id: string) => {
+  const deleteCredential = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const cred = credentials.find(c => c.id === id);
-    if (cred) {
-      setCredentials((prev) => {
-        const updated = prev.filter(c => c.id !== id);
-        saveToDisk('gz_credentials', updated);
-        return updated;
+    try {
+      await fetch(`/api/credentials/${id}`, {
+        method: 'DELETE'
       });
-      writeLog('CRED_DELETE', `Credencial eliminada: ${cred.entityName}`, 'Éxito');
+      writeLog('CRED_DELETE', `Credencial eliminada ID: ${id}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
   // -------------------------------------------------------------
   // CONSOLE TYPES MANAGEMENT
   // -------------------------------------------------------------
-  const addConsoleType = (ctData: Omit<ConsoleType, 'id' | 'isActive'>) => {
+  const addConsoleType = async (ctData: Omit<ConsoleType, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const newCt: ConsoleType = {
-      ...ctData,
-      id: `ct-${Date.now()}`,
-      isActive: true,
-    };
-    setConsoleTypes((prev) => {
-      const updated = [...prev, newCt];
-      saveToDisk('gz_console_types', updated);
-      return updated;
-    });
-    writeLog('CONSOLE_TYPE_CREATE', `Tipo de consola creado: ${newCt.name} (${newCt.emoji}) - Tarifa: $${newCt.hourlyRate.toFixed(2)}/h`, 'Éxito');
+    try {
+      const res = await fetch('/api/console-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ctData)
+      });
+      if (res.ok) {
+        const newCt = await res.json();
+        writeLog('CONSOLE_TYPE_CREATE', `Tipo de consola creado: ${newCt.name} (${newCt.emoji}) - Tarifa: $${newCt.hourlyRate.toFixed(2)}/h`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const updateConsoleType = (id: string, updatedFields: Partial<ConsoleType>) => {
+  const updateConsoleType = async (id: string, updatedFields: Partial<ConsoleType>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    setConsoleTypes((prev) => {
-      const updated = prev.map((ct) => {
-        if (ct.id === id) {
-          const uct = { ...ct, ...updatedFields };
-          writeLog('CONSOLE_TYPE_UPDATE', `Tipo de consola actualizado: ${uct.name} - Tarifa: $${uct.hourlyRate.toFixed(2)}/h, Activo: ${uct.isActive}`, 'Éxito');
-          return uct;
-        }
-        return ct;
+    try {
+      const res = await fetch(`/api/console-types/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedFields)
       });
-      saveToDisk('gz_console_types', updated);
-      return updated;
-    });
+      if (res.ok) {
+        const uct = await res.json();
+        writeLog('CONSOLE_TYPE_UPDATE', `Tipo de consola actualizado: ${uct.name} - Tarifa: $${uct.hourlyRate.toFixed(2)}/h, Activo: ${uct.isActive}`, 'Éxito');
+        fetchAllData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
-  const deleteConsoleType = (id: string) => {
+  const deleteConsoleType = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
-    const ct = consoleTypes.find(c => c.id === id);
-    if (ct) {
-      setConsoleTypes((prev) => {
-        const updated = prev.filter(c => c.id !== id);
-        saveToDisk('gz_console_types', updated);
-        return updated;
+    try {
+      await fetch(`/api/console-types/${id}`, {
+        method: 'DELETE'
       });
-      writeLog('CONSOLE_TYPE_DELETE', `Tipo de consola eliminado: ${ct.name}`, 'Éxito');
+      writeLog('CONSOLE_TYPE_DELETE', `Tipo de consola inhabilitado ID: ${id}`, 'Éxito');
+      fetchAllData();
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -1200,3 +1112,4 @@ export const useAppState = () => {
   if (!context) throw new Error('useAppState must be used within an AppStateProvider');
   return context;
 };
+
