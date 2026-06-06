@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { apiUrl } from '../lib/api';
 import { useAppState } from '../context/AppStateContext';
 import type { Payment, PaymentMethod, ShiftClosing } from '../context/AppStateContext';
 import { useToast } from '../components/ToastNotification';
@@ -424,7 +425,7 @@ export const Payments: React.FC = () => {
               setActiveReceiptPayment(pay);
               setActiveReceiptUrl('');
               try {
-                const res = await fetch(`/api/payments/${pay.id}/receipt`);
+                const res = await fetch(apiUrl(`/api/payments/${pay.id}/receipt`));
                 if (res.ok) {
                   const data = await res.json();
                   setActiveReceiptUrl(base64ToBlobUrl(data.receiptImageUrl));

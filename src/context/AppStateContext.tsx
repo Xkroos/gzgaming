@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiUrl } from '../lib/api';
 
 // -------------------------------------------------------------
 // TYPES & INTERFACES
@@ -266,7 +267,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   const writeLog = async (action: string, details: string, status: 'Éxito' | 'Fallo' | 'Advertencia' = 'Éxito') => {
     try {
-      const res = await fetch('/api/audit-logs', {
+      const res = await fetch(apiUrl('/api/audit-logs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -339,17 +340,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchAllData = async () => {
     try {
       const endpoints = {
-        users: '/api/users',
-        consoleTypes: '/api/console-types',
-        pcs: '/api/pcs',
-        plans: '/api/plans',
-        offers: '/api/offers',
-        payments: '/api/payments',
-        inventory: '/api/inventory',
-        inventoryLogs: '/api/inventory-logs',
-        shiftClosings: '/api/shift-closings',
-        credentials: '/api/credentials',
-        auditLogs: '/api/audit-logs',
+        users: apiUrl('/api/users'),
+        consoleTypes: apiUrl('/api/console-types'),
+        pcs: apiUrl('/api/pcs'),
+        plans: apiUrl('/api/plans'),
+        offers: apiUrl('/api/offers'),
+        payments: apiUrl('/api/payments'),
+        inventory: apiUrl('/api/inventory'),
+        inventoryLogs: apiUrl('/api/inventory-logs'),
+        shiftClosings: apiUrl('/api/shift-closings'),
+        credentials: apiUrl('/api/credentials'),
+        auditLogs: apiUrl('/api/audit-logs'),
       };
 
       const [
@@ -397,8 +398,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const fetchDynamicData = async () => {
     try {
       const [pcsRes, paymentsRes] = await Promise.all([
-        fetch('/api/pcs').then(r => r.json()),
-        fetch('/api/payments').then(r => r.json())
+        fetch(apiUrl('/api/pcs')).then(r => r.json()),
+        fetch(apiUrl('/api/payments')).then(r => r.json())
       ]);
       if (Array.isArray(pcsRes)) setPcs(pcsRes);
       if (Array.isArray(paymentsRes)) setPayments(paymentsRes);
@@ -450,7 +451,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   const loginUser = async (username: string, password?: string): Promise<boolean> => {
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(apiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -507,7 +508,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const sessionId = `sess-${Date.now()}`;
 
     try {
-      await fetch(`/api/pcs/${pcId}`, {
+      await fetch(apiUrl(`/api/pcs/${pcId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -598,7 +599,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addPC = async (pcData: Omit<PC, 'id' | 'status' | 'remainingTime' | 'totalAssignedTime'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/pcs/create', {
+      const res = await fetch(apiUrl('/api/pcs/create'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -623,7 +624,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updatePC = async (id: string, updatedFields: Partial<PC>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(`/api/pcs/${id}`, {
+      await fetch(apiUrl(`/api/pcs/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -638,7 +639,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deletePC = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(`/api/pcs/${id}`, {
+      await fetch(apiUrl(`/api/pcs/${id}`), {
         method: 'DELETE'
       });
       writeLog('PC_DELETE', `Equipo eliminado: ${id}`, 'Éxito');
@@ -654,7 +655,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const registerPayment = async (paymentData: Omit<Payment, 'id' | 'operatorId' | 'operatorName' | 'status' | 'createdAt'>) => {
     if (!currentUser) return;
     try {
-      const res = await fetch('/api/payments', {
+      const res = await fetch(apiUrl('/api/payments'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -674,7 +675,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const validatePayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(`/api/payments/${paymentId}/validate`, {
+      await fetch(apiUrl(`/api/payments/${paymentId}/validate`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ validatorId: currentUser.id })
@@ -689,7 +690,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const rejectPayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(`/api/payments/${paymentId}/reject`, {
+      await fetch(apiUrl(`/api/payments/${paymentId}/reject`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ validatorId: currentUser.id })
@@ -748,7 +749,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     try {
-      const res = await fetch('/api/shift-closings', {
+      const res = await fetch(apiUrl('/api/shift-closings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData)
@@ -771,7 +772,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addUser = async (username: string, fullName: string, role: UserRole, password?: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      const res = await fetch('/api/users', {
+      const res = await fetch(apiUrl('/api/users'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, fullName, role, password })
@@ -788,7 +789,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateUser = async (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      const res = await fetch(`/api/users/${id}`, {
+      const res = await fetch(apiUrl(`/api/users/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fullName, role, status, password })
@@ -805,7 +806,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteUser = async (id: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(`/api/users/${id}`, {
+      await fetch(apiUrl(`/api/users/${id}`), {
         method: 'DELETE'
       });
       writeLog('USER_DELETE', `Usuario inhabilitado ID: ${id}`, 'Éxito');
@@ -824,7 +825,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!item) return;
     
     try {
-      await fetch('/api/inventory-logs', {
+      await fetch(apiUrl('/api/inventory-logs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -835,7 +836,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       });
 
-      await fetch(`/api/inventory/${id}`, {
+      await fetch(apiUrl(`/api/inventory/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -907,7 +908,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addProduct = async (productData: Omit<InventoryItem, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/inventory', {
+      const res = await fetch(apiUrl('/api/inventory'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productData)
@@ -928,7 +929,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addPlan = async (planData: Omit<Plan, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/plans', {
+      const res = await fetch(apiUrl('/api/plans'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(planData)
@@ -946,7 +947,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updatePlan = async (id: string, updatedFields: Partial<Plan>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(`/api/plans/${id}`, {
+      const res = await fetch(apiUrl(`/api/plans/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -964,7 +965,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addOffer = async (offerData: Omit<Offer, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/offers', {
+      const res = await fetch(apiUrl('/api/offers'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(offerData)
@@ -982,7 +983,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateOffer = async (id: string, updatedFields: Partial<Offer>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(`/api/offers/${id}`, {
+      const res = await fetch(apiUrl(`/api/offers/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -1003,7 +1004,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCredential = async (credData: Omit<Credential, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/credentials', {
+      const res = await fetch(apiUrl('/api/credentials'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credData)
@@ -1021,7 +1022,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteCredential = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(`/api/credentials/${id}`, {
+      await fetch(apiUrl(`/api/credentials/${id}`), {
         method: 'DELETE'
       });
       writeLog('CRED_DELETE', `Credencial eliminada ID: ${id}`, 'Éxito');
@@ -1037,7 +1038,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addConsoleType = async (ctData: Omit<ConsoleType, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch('/api/console-types', {
+      const res = await fetch(apiUrl('/api/console-types'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctData)
@@ -1055,7 +1056,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateConsoleType = async (id: string, updatedFields: Partial<ConsoleType>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(`/api/console-types/${id}`, {
+      const res = await fetch(apiUrl(`/api/console-types/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -1073,7 +1074,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteConsoleType = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(`/api/console-types/${id}`, {
+      await fetch(apiUrl(`/api/console-types/${id}`), {
         method: 'DELETE'
       });
       writeLog('CONSOLE_TYPE_DELETE', `Tipo de consola inhabilitado ID: ${id}`, 'Éxito');
