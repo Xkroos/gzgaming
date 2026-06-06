@@ -21,7 +21,7 @@ import './styles/app.css';
 type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'client-screen' | 'console-types';
 
 const MainAppContent: React.FC = () => {
-  const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, updateBcvRateManually, isBcvLoading, pcs, payments, users, consoleTypes } = useAppState();
+  const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, isBcvLoading, pcs, payments, users, consoleTypes } = useAppState();
   const { toast } = useToast();
   const [activeView, setActiveView] = useState<ViewType>('pc-console');
   const [currentTime, setCurrentTime] = useState(new Date());
