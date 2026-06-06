@@ -529,7 +529,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const releasePC = async (pcId: string) => {
     try {
-      await fetch(`/api/pcs/${pcId}`, {
+      await fetch(apiUrl(`/api/pcs/${pcId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -549,7 +549,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const pausePC = async (pcId: string) => {
     try {
-      await fetch(`/api/pcs/${pcId}`, {
+      await fetch(apiUrl(`/api/pcs/${pcId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Suspendida' })
@@ -563,7 +563,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const resumePC = async (pcId: string) => {
     try {
-      await fetch(`/api/pcs/${pcId}`, {
+      await fetch(apiUrl(`/api/pcs/${pcId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'En Uso' })
@@ -580,7 +580,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!pc) return;
     const additionalSeconds = additionalMinutes * 60;
     try {
-      await fetch(`/api/pcs/${pcId}`, {
+      await fetch(apiUrl(`/api/pcs/${pcId}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -864,7 +864,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!item) return;
     
     try {
-      await fetch('/api/inventory-logs', {
+      await fetch(apiUrl('/api/inventory-logs'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -875,7 +875,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         })
       });
 
-      await fetch(`/api/inventory/${id}`, {
+      await fetch(apiUrl(`/api/inventory/${id}`), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
