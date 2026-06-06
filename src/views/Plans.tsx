@@ -74,12 +74,12 @@ export const Plans: React.FC = () => {
 
   return (
     <div className="view-container">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 className="text-gradient-purple title-glow" style={{ fontSize: '2.2rem' }}>Planes y Ofertas</h1>
           <p style={{ color: 'var(--text-secondary)' }}>Definición de tarifas de juego y promociones activas en la sede</p>
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
           <button className="btn btn-primary" onClick={() => setShowAddPlan(true)}>
             <Plus size={16} /> Crear Plan
           </button>
@@ -89,7 +89,7 @@ export const Plans: React.FC = () => {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: '24px', alignItems: 'start' }}>
         {/* Plans Management */}
         <div className="glass-card">
           <h3 style={{ color: 'white', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -206,7 +206,7 @@ export const Plans: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px' }}>
                   <div className="form-group">
                     <label className="form-label">Duración (Minutos)</label>
                     <input 

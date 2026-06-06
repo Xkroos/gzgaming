@@ -11,7 +11,7 @@ import { Credentials } from './views/Credentials';
 import { AuditLogs } from './views/AuditLogs';
 import { ClientScreen } from './views/ClientScreen';
 import { ConsoleTypes } from './views/ConsoleTypes';
-import { 
+import {
   Monitor, LayoutDashboard, DollarSign, Package, Award, Users, Key, Shield, RefreshCw, LogOut, Landmark, Clock, Menu, X, Gamepad2
 } from 'lucide-react';
 import './styles/global.css';
@@ -56,7 +56,7 @@ const MainAppContent: React.FC = () => {
     setActiveView(view);
     setSidebarOpen(false);
   };
-  
+
   // Login form state
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -141,18 +141,16 @@ const MainAppContent: React.FC = () => {
             </div>
             <h2 style={{ fontSize: '2.2rem', fontWeight: '900', background: 'linear-gradient(135deg, var(--neon-cyan) 0%, var(--neon-purple) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '0.08em', marginBottom: '6px' }}>GAME ZONE</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Sistema de Control Administrativo</p>
-            <div style={{ display: 'inline-block', padding: '2px 10px', background: 'rgba(57,255,20,0.1)', border: '1px solid rgba(57,255,20,0.3)', borderRadius: '20px', marginTop: '8px' }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--neon-green)', fontWeight: 600, letterSpacing: '0.05em' }}>● SISTEMA EN LÍNEA</span>
-            </div>
+
           </div>
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="form-group">
               <label className="form-label">Usuario</label>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder="Ingresa tu usuario" 
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Ingresa tu usuario"
                 value={loginUsername}
                 onChange={e => setLoginUsername(e.target.value)}
                 required
@@ -162,10 +160,10 @@ const MainAppContent: React.FC = () => {
             <div className="form-group">
               <label className="form-label">Contraseña</label>
               <div style={{ position: 'relative' }}>
-                <input 
-                  type={showLoginPassword ? "text" : "password"} 
-                  className="form-input" 
-                  placeholder="Ingresa tu contraseña" 
+                <input
+                  type={showLoginPassword ? "text" : "password"}
+                  className="form-input"
+                  placeholder="Ingresa tu contraseña"
                   value={loginPassword}
                   onChange={e => setLoginPassword(e.target.value)}
                   style={{ paddingRight: '70px' }}
@@ -262,7 +260,7 @@ const MainAppContent: React.FC = () => {
 
         <div className="sidebar-nav">
           {currentUser.role === 'Admin' && (
-            <div 
+            <div
               className={`nav-link ${activeView === 'dashboard' ? 'active' : ''}`}
               onClick={() => handleNavClick('dashboard')}
             >
@@ -271,7 +269,7 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
 
-          <div 
+          <div
             className={`nav-link ${activeView === 'pc-console' ? 'active' : ''}`}
             onClick={() => handleNavClick('pc-console')}
           >
@@ -279,7 +277,7 @@ const MainAppContent: React.FC = () => {
             <span>Consola PCs</span>
           </div>
 
-          <div 
+          <div
             className={`nav-link ${activeView === 'payments' ? 'active' : ''}`}
             onClick={() => handleNavClick('payments')}
           >
@@ -295,7 +293,7 @@ const MainAppContent: React.FC = () => {
             })()}
           </div>
 
-          <div 
+          <div
             className={`nav-link ${activeView === 'inventory' ? 'active' : ''}`}
             onClick={() => handleNavClick('inventory')}
           >
@@ -304,7 +302,7 @@ const MainAppContent: React.FC = () => {
           </div>
 
           {currentUser.role !== 'Operador' && (
-            <div 
+            <div
               className={`nav-link ${activeView === 'console-types' ? 'active' : ''}`}
               onClick={() => handleNavClick('console-types')}
             >
@@ -314,7 +312,7 @@ const MainAppContent: React.FC = () => {
           )}
 
           {currentUser.role !== 'Operador' && (
-            <div 
+            <div
               className={`nav-link ${activeView === 'plans' ? 'active' : ''}`}
               onClick={() => handleNavClick('plans')}
             >
@@ -324,7 +322,7 @@ const MainAppContent: React.FC = () => {
           )}
 
           {currentUser.role === 'Admin' && (
-            <div 
+            <div
               className={`nav-link ${activeView === 'staff' ? 'active' : ''}`}
               onClick={() => handleNavClick('staff')}
             >
@@ -333,7 +331,7 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
 
-          <div 
+          <div
             className={`nav-link ${activeView === 'credentials' ? 'active' : ''}`}
             onClick={() => handleNavClick('credentials')}
           >
@@ -342,7 +340,7 @@ const MainAppContent: React.FC = () => {
           </div>
 
           {currentUser.role === 'Admin' && (
-            <div 
+            <div
               className={`nav-link ${activeView === 'audit-logs' ? 'active' : ''}`}
               onClick={() => handleNavClick('audit-logs')}
             >
@@ -353,7 +351,7 @@ const MainAppContent: React.FC = () => {
 
           <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
 
-          <div 
+          <div
             className={`nav-link ${activeView === 'client-screen' ? 'active' : ''}`}
             onClick={() => handleNavClick('client-screen')}
             style={{ border: '1px dashed var(--neon-cyan)', color: 'var(--neon-cyan)' }}
@@ -374,7 +372,7 @@ const MainAppContent: React.FC = () => {
                 <div className="user-profile-role">{currentUser.role}</div>
               </div>
             </div>
-            <button 
+            <button
               onClick={logoutUser}
               style={{ background: 'none', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '4px' }}
               title="Cerrar Sesión"
@@ -414,8 +412,8 @@ const MainAppContent: React.FC = () => {
             <div className="bcv-rate-badge" style={{ gap: '10px' }}>
               <Landmark size={16} />
               <span>BCV: {bcvRate.toFixed(2)}</span>
-              <button 
-                onClick={() => { fetchBcvRate(true); toast.info('Sincronizando...', 'Actualizando tasa BCV oficial.'); }} 
+              <button
+                onClick={() => { fetchBcvRate(true); toast.info('Sincronizando...', 'Actualizando tasa BCV oficial.'); }}
                 disabled={isBcvLoading}
                 style={{ background: 'none', border: 'none', color: 'var(--neon-cyan)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }}
                 title="Sincronizar Tasa BCV Oficial"
@@ -423,23 +421,8 @@ const MainAppContent: React.FC = () => {
                 <RefreshCw size={14} className={isBcvLoading ? 'spin-anim' : ''} style={{ animation: isBcvLoading ? 'spin 1s infinite linear' : 'none' }} />
               </button>
             </div>
-            
-            {/* Standard manual rates change for Admin */}
-            {currentUser.role === 'Admin' && (
-              <button 
-                className="btn btn-secondary header-adjust-rate-btn" 
-                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                onClick={() => {
-                  const rate = prompt('Ingresa la nueva tasa de cambio en VES/$:', String(bcvRate));
-                  if (rate) {
-                    const parsed = parseFloat(rate);
-                    if (!isNaN(parsed) && parsed > 0) updateBcvRateManually(parsed);
-                  }
-                }}
-              >
-                Ajustar Tasa
-              </button>
-            )}
+
+
           </div>
         </header>
 
