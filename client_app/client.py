@@ -152,16 +152,22 @@ class GameZoneClientApp:
             try:
                 with open(CONFIG_FILE, "r") as f:
                     cfg = json.load(f)
-                    self.server_ip = cfg.get("server_ip", "localhost")
+                    # Soporta 'server_url' (producción) o 'server_ip' (LAN local legado)
+                    if "server_url" in cfg:
+                        self.server_url = cfg["server_url"].rstrip("/")
+                    elif "server_ip" in cfg:
+                        self.server_url = f"http://{cfg['server_ip']}:5000"
+                    else:
+                        self.server_url = "http://localhost:5000"
                     self.pc_id = cfg.get("pc_id", "PC-01")
                     return
             except Exception as e:
                 print(f"Error reading config: {e}")
-        self.server_ip = "localhost"
+        self.server_url = "http://localhost:5000"
         self.pc_id = "PC-01"
         # Write default if not found
         with open(CONFIG_FILE, "w") as f:
-            json.dump({"server_ip": "localhost", "pc_id": "PC-01"}, f, indent=2)
+            json.dump({"server_url": "http://localhost:5000", "pc_id": "PC-01"}, f, indent=2)
 
     def draw_lock_screen_design(self):
         # Radial lines/mesh to look premium
@@ -200,7 +206,7 @@ class GameZoneClientApp:
         # Terminal metadata footer
         self.info_text = self.canvas.create_text(
             cx, self.screen_h - 60, 
-            text=f"TERMINAL: {self.pc_id} | Servidor: {self.server_ip} | Game Zone OS Client v1.0", 
+            text=f"TERMINAL: {self.pc_id} | Servidor: {self.server_url} | Game Zone OS Client v2.0", 
             font=("Consolas", 10), 
             fill="#404560"
         )
@@ -282,7 +288,7 @@ class GameZoneClientApp:
             return
             
         def do_request():
-            url = f"http://{self.server_ip}:5000/api/pcs/{self.pc_id}"
+            url = f"{self.server_url}/api/pcs/{self.pc_id}"
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "GameZone-Client"})
                 with urllib.request.urlopen(req, timeout=1.5) as response:

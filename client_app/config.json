@@ -1,4 +1,4 @@
 {
-  "server_ip": "localhost",
-  "pc_id": "PC-01"
+  "server_url": "https://gzgaming-production.up.railway.app",
+  "pc_id": "PC-02"
 }
