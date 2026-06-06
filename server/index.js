@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
   'https://gamezoneg.netlify.app',
+  'https://gzgaming-production.up.railway.app',
   'http://localhost:5173',
   'http://localhost:4173',
 ];
