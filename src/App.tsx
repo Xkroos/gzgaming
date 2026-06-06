@@ -371,14 +371,6 @@ const MainAppContent: React.FC = () => {
                 <div className="user-profile-name">{currentUser.fullName}</div>
                 <div className="user-profile-role">{currentUser.role}</div>
               </div>
-            </div>
-            <button
-              onClick={logoutUser}
-              style={{ background: 'none', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '4px' }}
-              title="Cerrar Sesión"
-            >
-              <LogOut size={16} />
-            </button>
           </div>
         </div>
       </div>
@@ -421,7 +413,15 @@ const MainAppContent: React.FC = () => {
                 <RefreshCw size={14} className={isBcvLoading ? 'spin-anim' : ''} style={{ animation: isBcvLoading ? 'spin 1s infinite linear' : 'none' }} />
               </button>
             </div>
-
+            
+            <button
+              onClick={logoutUser}
+              style={{ background: 'rgba(255,51,102,0.1)', border: '1px solid rgba(255,51,102,0.3)', color: 'var(--neon-red)', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
+              title="Cerrar Sesión"
+            >
+              <LogOut size={16} />
+              <span className="hide-on-mobile" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Salir</span>
+            </button>
 
           </div>
         </header>
