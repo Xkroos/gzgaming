@@ -371,6 +371,7 @@ const MainAppContent: React.FC = () => {
                 <div className="user-profile-name">{currentUser.fullName}</div>
                 <div className="user-profile-role">{currentUser.role}</div>
               </div>
+            </div>
           </div>
         </div>
       </div>
