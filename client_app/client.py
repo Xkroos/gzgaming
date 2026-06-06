@@ -6,11 +6,20 @@ import urllib.request
 import urllib.error
 import threading
 import ctypes
+import winreg
 from ctypes import wintypes
 
 CONFIG_FILE = "config.json"
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
+
+def set_task_manager_disabled(disable: bool):
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Policies\System")
+        winreg.SetValueEx(key, "DisableTaskMgr", 0, winreg.REG_DWORD, 1 if disable else 0)
+        winreg.CloseKey(key)
+    except Exception:
+        pass
 
 # Keyboard Hook Constants & Globals
 WH_KEYBOARD_LL = 13
@@ -27,29 +36,12 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
         ("dwExtraInfo", ctypes.c_ulonglong)
     ]
 
-# Callback to intercept system hotkeys (Alt+Tab, WinKey, Alt+F4, Ctrl+Esc, etc.)
+# Callback to intercept system hotkeys and ALL keys
 def keyboard_hook_proc(nCode, wParam, lParam):
     if nCode == 0:  # HC_ACTION = 0
-        kbd = KBDLLHOOKSTRUCT.from_address(lParam)
-        vk = kbd.vkCode
-        alt_pressed = (kbd.flags & 0x20) != 0
-        
-        # Block Alt + Tab
-        if vk == 9 and alt_pressed:
-            return 1
-        # Block Alt + Esc
-        if vk == 27 and alt_pressed:
-            return 1
-        # Block Windows Keys (Left Win: 91, Right Win: 92)
-        if vk in [91, 92]:
-            return 1
-        # Block Ctrl + Esc
-        ctrl_pressed = (user32.GetKeyState(162) & 0x8000) or (user32.GetKeyState(163) & 0x8000)
-        if vk == 27 and ctrl_pressed:
-            return 1
-        # Block Alt + F4
-        if vk == 115 and alt_pressed:
-            return 1
+        # Block ALL keyboard input while the hook is active
+        return 1
+            
             
     return user32.CallNextHookEx(keyboard_hook, nCode, wParam, lParam)
 
@@ -78,6 +70,7 @@ def start_system_lock():
     global hook_thread, hook_active
     if hook_active:
         return
+    set_task_manager_disabled(True)
     hook_thread = threading.Thread(target=hook_loop, daemon=True)
     hook_thread.start()
 
@@ -86,6 +79,7 @@ def stop_system_lock():
     if not hook_active:
         return
     hook_active = False
+    set_task_manager_disabled(False)
     if hook_thread:
         user32.PostThreadMessageW(hook_thread.ident, 0, 0, 0)
 
