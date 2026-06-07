@@ -349,19 +349,44 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
 
-          <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
+          <div className="desktop-only">
+            <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
 
-          <div
-            className={`nav-link ${activeView === 'client-screen' ? 'active' : ''}`}
-            onClick={() => handleNavClick('client-screen')}
-            style={{ border: '1px dashed var(--neon-cyan)', color: 'var(--neon-cyan)' }}
-          >
-            <Monitor size={18} />
-            <span>Pantalla Cliente</span>
+            <div
+              className={`nav-link ${activeView === 'client-screen' ? 'active' : ''}`}
+              onClick={() => handleNavClick('client-screen')}
+              style={{ border: '1px dashed var(--neon-cyan)', color: 'var(--neon-cyan)' }}
+            >
+              <Monitor size={18} />
+              <span>Pantalla Cliente</span>
+            </div>
+          </div>
+
+          <div className="mobile-only">
+            <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '12px 16px', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+              <div className="user-profile-badge" style={{ flex: 1, minWidth: 0 }}>
+                <div className="user-profile-avatar">
+                  {currentUser.fullName[0]}
+                </div>
+                <div className="user-profile-info">
+                  <div className="user-profile-name">{currentUser.fullName}</div>
+                  <div className="user-profile-role">{currentUser.role}</div>
+                </div>
+              </div>
+              
+              <button
+                onClick={logoutUser}
+                style={{ background: 'transparent', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', flexShrink: 0 }}
+                title="Cerrar Sesión"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="sidebar-footer">
+        <div className="sidebar-footer desktop-only">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
             <div className="user-profile-badge" style={{ flex: 1, minWidth: 0 }}>
               <div className="user-profile-avatar">

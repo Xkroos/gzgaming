@@ -55,6 +55,7 @@
 
 .sidebar-nav {
   flex: 1;
+  min-height: 0;
   padding: 20px 12px;
   display: flex;
   flex-direction: column;
@@ -922,7 +923,7 @@
     left: -100%;
     top: 0;
     width: 280px;
-    height: 100vh;
+    height: 100dvh;
     z-index: 1100;
     transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: none;
@@ -1319,5 +1320,19 @@
 
   .glass-card {
     padding: 14px;
+  }
+}
+
+/* Utility classes for responsive visibility */
+.mobile-only {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .desktop-only {
+    display: none !important;
+  }
+  .mobile-only {
+    display: block !important;
   }
 }
