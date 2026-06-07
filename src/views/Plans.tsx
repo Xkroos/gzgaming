@@ -213,8 +213,9 @@ export const Plans: React.FC = () => {
                       type="number" 
                       className="form-input" 
                       min="10" 
-                      value={planMin}
+                      value={planMin || ''}
                       onChange={e => setPlanMin(parseInt(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -226,8 +227,9 @@ export const Plans: React.FC = () => {
                       className="form-input" 
                       min="0.1" 
                       step="0.01" 
-                      value={planUsd}
+                      value={planUsd || ''}
                       onChange={e => setPlanUsd(parseFloat(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -288,8 +290,9 @@ export const Plans: React.FC = () => {
                     className="form-input" 
                     min="1" 
                     max="100" 
-                    value={offerPercent}
+                    value={offerPercent || ''}
                     onChange={e => setOfferPercent(parseInt(e.target.value) || 0)}
+                    placeholder="Ingrese la cantidad"
                     required 
                   />
                 </div>

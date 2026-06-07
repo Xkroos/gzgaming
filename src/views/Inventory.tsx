@@ -341,8 +341,9 @@ export const Inventory: React.FC = () => {
                       className="form-input" 
                       min="0.01" 
                       step="0.01"
-                      value={prodPurchasePrice}
+                      value={prodPurchasePrice || ''}
                       onChange={e => setProdPurchasePrice(parseFloat(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -354,8 +355,9 @@ export const Inventory: React.FC = () => {
                       className="form-input" 
                       min="0.1" 
                       step="0.01"
-                      value={prodPrice}
+                      value={prodPrice || ''}
                       onChange={e => setProdPrice(parseFloat(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -368,8 +370,9 @@ export const Inventory: React.FC = () => {
                       type="number" 
                       className="form-input" 
                       min="0" 
-                      value={prodStock}
+                      value={prodStock || ''}
                       onChange={e => setProdStock(parseInt(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -380,8 +383,9 @@ export const Inventory: React.FC = () => {
                       type="number" 
                       className="form-input" 
                       min="1" 
-                      value={prodMinStock}
+                      value={prodMinStock || ''}
                       onChange={e => setProdMinStock(parseInt(e.target.value) || 0)}
+                      placeholder="Ingrese la cantidad"
                       required 
                     />
                   </div>
@@ -416,8 +420,9 @@ export const Inventory: React.FC = () => {
                     type="number" 
                     className="form-input" 
                     min="1" 
-                    value={restockAmount}
+                    value={restockAmount || ''}
                     onChange={e => setRestockAmount(parseInt(e.target.value) || 0)}
+                    placeholder="Ingrese la cantidad"
                     required 
                   />
                 </div>
@@ -471,8 +476,9 @@ export const Inventory: React.FC = () => {
                     className="form-input" 
                     min="1" 
                     max={activeItemForSale.stock}
-                    value={saleAmount}
+                    value={saleAmount || ''}
                     onChange={e => setSaleAmount(Math.min(activeItemForSale.stock, Math.max(1, parseInt(e.target.value) || 1)))}
+                    placeholder="Ingrese la cantidad"
                     required 
                   />
                 </div>

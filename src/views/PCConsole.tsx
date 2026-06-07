@@ -686,8 +686,9 @@ export const PCConsole: React.FC = () => {
                         className="form-input" 
                         min="5" 
                         step="5"
-                        value={customMinutes} 
+                        value={customMinutes || ''} 
                         onChange={e => setCustomMinutes(parseInt(e.target.value) || 0)} 
+                        placeholder="Ingrese la cantidad"
                         required 
                       />
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mínimo 5 minutos.</span>
@@ -881,8 +882,9 @@ export const PCConsole: React.FC = () => {
                     className="form-input" 
                     min="5" 
                     step="5"
-                    value={addMinutes} 
+                    value={addMinutes || ''} 
                     onChange={e => setAddMinutes(parseInt(e.target.value) || 0)} 
+                    placeholder="Ingrese la cantidad"
                     required 
                   />
                 </div>
@@ -1196,8 +1198,9 @@ export const PCConsole: React.FC = () => {
                     className="form-input" 
                     min="0.1" 
                     step="0.01"
-                    value={pcHourlyRate} 
+                    value={pcHourlyRate || ''} 
                     onChange={e => setPcHourlyRate(parseFloat(e.target.value) || 0)} 
+                    placeholder="Ingrese la cantidad"
                     required 
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Se pre-carga según el tipo de consola seleccionado.</span>

@@ -96,8 +96,9 @@ export const ConsoleTypes: React.FC = () => {
                     style={{ width: '120px', padding: '6px 10px' }}
                     min="0.1"
                     step="0.01"
-                    value={tempGlobalRate}
+                    value={tempGlobalRate || ''}
                     onChange={e => setTempGlobalRate(parseFloat(e.target.value) || 0)}
+                    placeholder="Ingrese la cantidad"
                   />
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>$/hora</span>
                   <button className="btn btn-cyan" style={{ padding: '6px 12px', fontSize: '0.8rem' }} onClick={handleSaveGlobalRate}>Guardar</button>
@@ -258,8 +259,9 @@ export const ConsoleTypes: React.FC = () => {
                     className="form-input"
                     min="0.1"
                     step="0.01"
-                    value={ctRate}
+                    value={ctRate || ''}
                     onChange={e => setCtRate(parseFloat(e.target.value) || 0)}
+                    placeholder="Ingrese la cantidad"
                     required
                   />
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Tarifa global actual: ${globalHourlyRate.toFixed(2)}/h</span>
@@ -327,8 +329,9 @@ export const ConsoleTypes: React.FC = () => {
                     className="form-input"
                     min="0.1"
                     step="0.01"
-                    value={editRate}
+                    value={editRate || ''}
                     onChange={e => setEditRate(parseFloat(e.target.value) || 0)}
+                    placeholder="Ingrese la cantidad"
                     required
                   />
                 </div>

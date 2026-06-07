@@ -963,11 +963,11 @@ export const Payments: React.FC = () => {
               <div className="modal-body">
                 <div className="form-group">
                   <label className="form-label">Monto en Dólares (USD)</label>
-                  <input type="number" className="form-input" min="0" step="0.01" value={amountUsd || ''} onChange={e => { const usd = parseFloat(e.target.value) || 0; setAmountUsd(usd); setAmountVes(parseFloat((usd * bcvRate).toFixed(2))); }} required />
+                  <input type="number" className="form-input" min="0" step="0.01" value={amountUsd || ''} onChange={e => { const usd = parseFloat(e.target.value) || 0; setAmountUsd(usd); setAmountVes(parseFloat((usd * bcvRate).toFixed(2))); }} placeholder="Ingrese la cantidad" required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Monto en Bolívares (VES)</label>
-                  <input type="number" className="form-input" min="0" step="0.01" value={amountVes || ''} onChange={e => { const ves = parseFloat(e.target.value) || 0; setAmountVes(ves); setAmountUsd(parseFloat((ves / bcvRate).toFixed(2))); }} required />
+                  <input type="number" className="form-input" min="0" step="0.01" value={amountVes || ''} onChange={e => { const ves = parseFloat(e.target.value) || 0; setAmountVes(ves); setAmountUsd(parseFloat((ves / bcvRate).toFixed(2))); }} placeholder="Ingrese la cantidad" required />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Método de Pago</label>
@@ -1035,11 +1035,11 @@ export const Payments: React.FC = () => {
                   </p>
                   <div className="form-group">
                     <label className="form-label">Efectivo en Caja ($ USD)</label>
-                    <input type="number" className="form-input" min="0" step="0.01" value={cashUsdInHand} onChange={e => setCashUsdInHand(parseFloat(e.target.value) || 0)} required />
+                    <input type="number" className="form-input" min="0" step="0.01" value={cashUsdInHand || ''} onChange={e => setCashUsdInHand(parseFloat(e.target.value) || 0)} placeholder="Ingrese la cantidad" required />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Efectivo en Caja (Bs. VES)</label>
-                    <input type="number" className="form-input" min="0" step="0.01" value={cashVesInHand} onChange={e => setCashVesInHand(parseFloat(e.target.value) || 0)} required />
+                    <input type="number" className="form-input" min="0" step="0.01" value={cashVesInHand || ''} onChange={e => setCashVesInHand(parseFloat(e.target.value) || 0)} placeholder="Ingrese la cantidad" required />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Notas / Observaciones de Cierre</label>
