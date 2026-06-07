@@ -11,6 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
+  'https://gamezonev3.netlify.app',
   'https://gamezoneg.netlify.app',
   'https://gzgaming-production.up.railway.app',
   'http://localhost:5173',
@@ -34,7 +35,7 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use((req, res, next) => {
   console.log(`[Request] ${req.method} ${req.url}`);
   const originalStatus = res.status;
-  res.status = function(code) {
+  res.status = function (code) {
     if (code >= 400) {
       console.error(`[Server HTTP Error] ${req.method} ${req.originalUrl || req.url} - Status Code: ${code}`);
     }
@@ -42,7 +43,7 @@ app.use((req, res, next) => {
   };
 
   const originalJson = res.json;
-  res.json = function(body) {
+  res.json = function (body) {
     if (res.statusCode >= 400 && body && body.error) {
       console.error(`[Server HTTP Error Details]:`, body.error);
     }
@@ -58,30 +59,30 @@ app.use((req, res, next) => {
 function startGameTimer() {
   setInterval(async () => {
     if (!pool) return;
-    
+
     try {
       // 1. Buscar todas las PCs en uso con tiempo restante > 0
       const activePcs = await pool.query(
         `SELECT id, remaining_time FROM pcs WHERE status = 'En Uso' AND remaining_time > 0`
       );
-      
+
       for (const pc of activePcs.rows) {
         const newTime = pc.remaining_time - 1;
-        
+
         if (newTime === 0) {
           // Bloquear PC
           await pool.query(
             `UPDATE pcs SET status = 'Bloqueada', remaining_time = 0 WHERE id = $1`,
             [pc.id]
           );
-          
+
           // Registrar en auditoría
           await pool.query(
             `INSERT INTO audit_logs (username, role, action, details, status)
              VALUES ('System', 'System', 'PC_LOCK', $1, 'Advertencia')`,
             [`El tiempo de juego en ${pc.id} llegó a 0. Pantalla bloqueada automáticamente.`]
           );
-          
+
           console.log(`[Timer] PC ${pc.id} bloqueada por expiración de tiempo.`);
         } else {
           // Decrementar
@@ -109,13 +110,13 @@ app.post('/api/auth/login', async (req, res) => {
     if (result.rowCount === 0) {
       return res.status(401).json({ error: 'Usuario no encontrado o inactivo' });
     }
-    
+
     const user = result.rows[0];
     const passwordMatch = bcrypt.compareSync(password || '', user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
-    
+
     res.json({
       id: user.id,
       username: user.username,
@@ -173,7 +174,7 @@ app.put('/api/users/:id', async (req, res) => {
         WHERE id = $4
       `, [fullName, role, status, id]);
     }
-    
+
     const result = await pool.query(`
       SELECT id, username, full_name as "fullName", role, status, created_at as "createdAt"
       FROM users WHERE id = $1
@@ -290,7 +291,7 @@ app.post('/api/pcs', async (req, res) => {
   if (!Array.isArray(pcsList)) {
     return res.status(400).json({ error: 'El cuerpo debe ser un array de PCs' });
   }
-  
+
   try {
     for (const pc of pcsList) {
       await pool.query(`
@@ -303,10 +304,10 @@ app.post('/api/pcs', async (req, res) => {
             hourly_rate = COALESCE($6, hourly_rate)
         WHERE id = $7
       `, [
-        pc.status, 
-        pc.remainingTime || 0, 
-        pc.totalAssignedTime || 0, 
-        pc.clientName || null, 
+        pc.status,
+        pc.remainingTime || 0,
+        pc.totalAssignedTime || 0,
+        pc.clientName || null,
         pc.currentSessionId || null,
         pc.hourlyRate,
         pc.id
@@ -512,13 +513,13 @@ app.post('/api/payments', async (req, res) => {
         opId = null; // Si no existe en la base de datos, forzamos el fallback
       }
     }
-    
+
     // Si no tenemos operatorId o el guardado es inválido, asumimos el primero disponible
     if (!opId) {
       const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
       if (opRes.rowCount > 0) opId = opRes.rows[0].id;
     }
-    
+
     // El trigger en schema.sql requiere status = 'Pendiente' por defecto al insertar
     const result = await pool.query(`
       INSERT INTO payments (session_id, operator_id, amount_usd, amount_ves, bcv_rate, payment_method, receipt_image_url, reference, status, offer_applied)
@@ -527,7 +528,7 @@ app.post('/api/payments', async (req, res) => {
                 amount_ves as "amountVes", bcv_rate as "bcvRate", payment_method as "paymentMethod", 
                 receipt_image_url as "receiptImageUrl", reference, status, offer_applied as "offerApplied", created_at as "createdAt"
     `, [sessionId || null, opId, amountUsd, amountVes, bcvRate, paymentMethod, receiptImageUrl || null, reference || null, offerApplied || null]);
-    
+
     // Obtener el nombre del operador para responder al frontend
     const details = await pool.query(`
       SELECT p.*, u.full_name as "operatorName" 
@@ -535,7 +536,7 @@ app.post('/api/payments', async (req, res) => {
       LEFT JOIN users u ON p.operator_id = u.id 
       WHERE p.id = $1
     `, [result.rows[0].id]);
-    
+
     res.status(201).json({
       ...result.rows[0],
       operatorName: details.rows[0].operatorName
@@ -554,13 +555,13 @@ app.put('/api/payments/:id/validate', async (req, res) => {
       const adminRes = await pool.query(`SELECT id FROM users WHERE role = 'Admin' LIMIT 1`);
       if (adminRes.rowCount > 0) valId = adminRes.rows[0].id;
     }
-    
+
     await pool.query(`
       UPDATE payments 
       SET status = 'Validado', validator_id = $1, validated_at = CURRENT_TIMESTAMP
       WHERE id = $2
     `, [valId, id]);
-    
+
     const result = await pool.query(`
       SELECT p.id, p.status, p.validated_at as "validatedAt", u.full_name as "validatorName", p.validator_id as "validatorId"
       FROM payments p
@@ -582,13 +583,13 @@ app.put('/api/payments/:id/reject', async (req, res) => {
       const adminRes = await pool.query(`SELECT id FROM users WHERE role = 'Admin' LIMIT 1`);
       if (adminRes.rowCount > 0) valId = adminRes.rows[0].id;
     }
-    
+
     await pool.query(`
       UPDATE payments 
       SET status = 'Rechazado', validator_id = $1, validated_at = CURRENT_TIMESTAMP
       WHERE id = $2
     `, [valId, id]);
-    
+
     const result = await pool.query(`
       SELECT p.id, p.status, p.validated_at as "validatedAt", u.full_name as "validatorName", p.validator_id as "validatorId"
       FROM payments p
@@ -685,7 +686,7 @@ app.post('/api/inventory-logs', async (req, res) => {
       VALUES ($1, $2, $3, $4)
       RETURNING id, product_id as "productId", change_amount as "changeAmount", reason, created_at as "createdAt"
     `, [productId, userId, changeAmount, reason]);
-    
+
     // Obtener nombres para retornar al frontend
     const details = await pool.query(`
       SELECT il.*, i.name as "productName", u.full_name as "userName"
@@ -732,7 +733,7 @@ app.post('/api/shift-closings', async (req, res) => {
         opId = null;
       }
     }
-    
+
     if (!opId) {
       const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
       if (opRes.rowCount > 0) opId = opRes.rows[0].id;
@@ -745,7 +746,7 @@ app.post('/api/shift-closings', async (req, res) => {
                 total_usd_generated as "totalUsdGenerated", total_ves_generated as "totalVesGenerated", 
                 total_time_minutes as "totalTimeMinutes", details, created_at as "createdAt"
     `, [opId, startTime, endTime || new Date(), totalUsdGenerated, totalVesGenerated, totalTimeMinutes, JSON.stringify(details)]);
-    
+
     const detailsWithNames = await pool.query(`
       SELECT sc.*, u.full_name as "operatorName"
       FROM shift_closings sc
@@ -821,7 +822,7 @@ app.post('/api/audit-logs', async (req, res) => {
       const userRes = await pool.query(`SELECT id FROM users WHERE full_name = $1 LIMIT 1`, [username]);
       if (userRes.rowCount > 0) userId = userRes.rows[0].id;
     }
-    
+
     const result = await pool.query(`
       INSERT INTO audit_logs (user_id, username, role, action, details, status)
       VALUES ($1, $2, $3, $4, $5, $6)
@@ -852,10 +853,10 @@ async function startServer() {
   try {
     // Inicializar conexión y tablas
     await initDatabase();
-    
+
     // Iniciar temporizador
     startGameTimer();
-    
+
     // Levantar puerto
     app.listen(PORT, () => {
       console.log(`========================================================`);
