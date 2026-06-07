@@ -9,7 +9,15 @@ import ctypes
 import winreg
 from ctypes import wintypes
 
-CONFIG_FILE = "config.json"
+import sys
+
+# Obtener la ruta de donde se está ejecutando el archivo (ya sea .py o .exe)
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+CONFIG_FILE = os.path.join(application_path, "config.json")
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 

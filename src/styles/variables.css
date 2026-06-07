@@ -54,8 +54,8 @@
   --transition-slow: 0.5s ease;
 
   /* Layout */
-  --sidebar-width: 260px;
-  --header-height: 70px;
+  --sidebar-width: 240px;
+  --header-height: 64px;
 }
 
 /* Base resets & animations tokens */
