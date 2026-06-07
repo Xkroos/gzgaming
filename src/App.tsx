@@ -9,7 +9,6 @@ import { Plans } from './views/Plans';
 import { Staff } from './views/Staff';
 import { Credentials } from './views/Credentials';
 import { AuditLogs } from './views/AuditLogs';
-import { ClientScreen } from './views/ClientScreen';
 import { ConsoleTypes } from './views/ConsoleTypes';
 import {
   Monitor, LayoutDashboard, DollarSign, Package, Award, Users, Key, Shield, RefreshCw, LogOut, Landmark, Clock, Menu, X, Gamepad2
@@ -18,7 +17,7 @@ import './styles/global.css';
 import './styles/app.css';
 
 // Active View type
-type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'client-screen' | 'console-types';
+type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'console-types';
 
 const MainAppContent: React.FC = () => {
   const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, isBcvLoading, pcs, payments, users, consoleTypes } = useAppState();
@@ -107,8 +106,7 @@ const MainAppContent: React.FC = () => {
         return <Credentials />;
       case 'audit-logs':
         return <AuditLogs />;
-      case 'client-screen':
-        return <ClientScreen />;
+
       case 'console-types':
         return <ConsoleTypes />;
       default:
@@ -200,6 +198,11 @@ const MainAppContent: React.FC = () => {
             </button>
           </form>
         </div>
+
+        {/* Login Footer */}
+        <footer style={{ position: 'absolute', bottom: '24px', width: '100%', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', zIndex: 2 }}>
+          © 2026 Gamezone.
+        </footer>
       </div>
     );
   }
@@ -349,18 +352,7 @@ const MainAppContent: React.FC = () => {
             </div>
           )}
 
-          <div className="desktop-only">
-            <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
 
-            <div
-              className={`nav-link ${activeView === 'client-screen' ? 'active' : ''}`}
-              onClick={() => handleNavClick('client-screen')}
-              style={{ border: '1px dashed var(--neon-cyan)', color: 'var(--neon-cyan)' }}
-            >
-              <Monitor size={18} />
-              <span>Pantalla Cliente</span>
-            </div>
-          </div>
 
           <div className="mobile-only">
             <div style={{ borderBottom: '1px solid var(--border-glass)', margin: '10px 0' }}></div>
@@ -374,7 +366,7 @@ const MainAppContent: React.FC = () => {
                   <div className="user-profile-role">{currentUser.role}</div>
                 </div>
               </div>
-              
+
               <button
                 onClick={logoutUser}
                 style={{ background: 'transparent', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', flexShrink: 0 }}
@@ -397,7 +389,7 @@ const MainAppContent: React.FC = () => {
                 <div className="user-profile-role">{currentUser.role}</div>
               </div>
             </div>
-            
+
             <button
               onClick={logoutUser}
               style={{ background: 'transparent', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', flexShrink: 0 }}
@@ -447,22 +439,20 @@ const MainAppContent: React.FC = () => {
                 <RefreshCw size={14} className={isBcvLoading ? 'spin-anim' : ''} style={{ animation: isBcvLoading ? 'spin 1s infinite linear' : 'none' }} />
               </button>
             </div>
-            
-            <button
-              onClick={logoutUser}
-              style={{ background: 'rgba(255,51,102,0.1)', border: '1px solid rgba(255,51,102,0.3)', color: 'var(--neon-red)', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '6px', marginLeft: '8px' }}
-              title="Cerrar Sesión"
-            >
-              <LogOut size={16} />
-              <span className="hide-on-mobile" style={{ fontSize: '0.85rem', fontWeight: 600 }}>Salir</span>
-            </button>
+
+
 
           </div>
         </header>
 
         {/* Dynamic view output */}
-        <div style={{ flex: 1, overflowY: 'auto' }}>
-          {renderView()}
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1 }}>
+            {renderView()}
+          </div>
+          <footer style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', borderTop: '1px solid var(--border-glass)', marginTop: 'auto' }}>
+            © 2026 Gamezone | Desarrollado por Xkroos
+          </footer>
         </div>
       </div>
 
