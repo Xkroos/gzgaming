@@ -362,8 +362,8 @@ const MainAppContent: React.FC = () => {
         </div>
 
         <div className="sidebar-footer">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="user-profile-badge">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div className="user-profile-badge" style={{ flex: 1, minWidth: 0 }}>
               <div className="user-profile-avatar">
                 {currentUser.fullName[0]}
               </div>
@@ -372,6 +372,14 @@ const MainAppContent: React.FC = () => {
                 <div className="user-profile-role">{currentUser.role}</div>
               </div>
             </div>
+            
+            <button
+              onClick={logoutUser}
+              style={{ background: 'transparent', border: 'none', color: 'var(--neon-red)', cursor: 'pointer', padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', flexShrink: 0 }}
+              title="Cerrar Sesión"
+            >
+              <LogOut size={20} />
+            </button>
           </div>
         </div>
       </div>
