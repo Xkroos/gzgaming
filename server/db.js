@@ -111,6 +111,17 @@ export async function initDatabase() {
     await pool.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference VARCHAR(100)');
     console.log('Columna reference verificada/creada con éxito.');
 
+    // Asegurar que existe el estado 'Revision' en el ENUM 'payment_status'
+    console.log('Verificando estado Revision en payment_status...');
+    try {
+      await pool.query("ALTER TYPE payment_status ADD VALUE IF NOT EXISTS 'Revision'");
+      console.log('Estado Revision agregado al ENUM payment_status.');
+    } catch (e) {
+      // In older postgres versions IF NOT EXISTS might not be supported on ALTER TYPE, or it might throw if it exists in a transaction.
+      // Postgres 9.3+ supports IF NOT EXISTS.
+      console.log('El estado Revision ya existe o hubo un error al agregarlo: ', e.message);
+    }
+
     // Habilitar RLS en todas las tablas para máxima seguridad
     console.log('Habilitando seguridad RLS en todas las tablas...');
     const tables = [

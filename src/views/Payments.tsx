@@ -7,7 +7,7 @@ import {
   DollarSign, Check, X, Printer, Clipboard, Eye, Receipt, History, Archive, Filter, FileText, Download, User
 } from 'lucide-react';
 
-type PaymentsTab = 'active' | 'historial' | 'cierres';
+type PaymentsTab = 'active' | 'revision' | 'historial' | 'cierres';
 
 export const Payments: React.FC = () => {
   const { 
@@ -34,6 +34,7 @@ export const Payments: React.FC = () => {
   // ─────────────────────────────────────────
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showClosingModal, setShowClosingModal] = useState(false);
+  const [showClosingConfirmModal, setShowClosingConfirmModal] = useState(false);
   const [activeReceiptPayment, setActiveReceiptPayment] = useState<Payment | null>(null);
   const [activeReceiptUrl, setActiveReceiptUrl] = useState<string>('');
   const [viewingShiftClosing, setViewingShiftClosing] = useState<ShiftClosing | null>(null);
@@ -51,8 +52,6 @@ export const Payments: React.FC = () => {
   // ─────────────────────────────────────────
   // CLOSE SHIFT STATES
   // ─────────────────────────────────────────
-  const [cashUsdInHand, setCashUsdInHand] = useState(0);
-  const [cashVesInHand, setCashVesInHand] = useState(0);
   const [shiftNotes, setShiftNotes] = useState('');
   const [generatedClosingReport, setGeneratedClosingReport] = useState<any>(null);
 
@@ -124,13 +123,26 @@ export const Payments: React.FC = () => {
       const today = new Date().toDateString();
       const pDate = new Date(p.createdAt).toDateString();
       const pDateObj = new Date(p.createdAt);
+      // If it's Pendiente or Revision, we ALWAYS want to see it regardless of date (unless filtered by search/operator)
+      // This prevents "Caja Activa" and "En Revisión" items from disappearing across midnight.
+      const isActiveOrRevision = p.status === 'Pendiente' || p.status === 'Revision';
 
-      // Encargado only sees today's payments
-      if (currentUser?.role === 'Encargado' && pDate !== today) return false;
-      // Operador only sees their own
-      if (currentUser?.role === 'Operador' && p.operatorId !== currentUser.id) return false;
+      if (!isActiveOrRevision) {
+        // Encargado only sees today's history payments
+        if (currentUser?.role === 'Encargado' && pDate !== today) return false;
+        if (!applyPeriodFilter(pDateObj)) return false;
+      }
 
-      if (!applyPeriodFilter(pDateObj)) return false;
+      // Operador and Encargado only see their own active/revision payments
+      if (currentUser?.role !== 'Admin' && isActiveOrRevision && p.operatorId !== currentUser?.id) {
+        return false;
+      }
+
+      // Operador only sees their own historical payments too
+      if (currentUser?.role === 'Operador' && !isActiveOrRevision && p.operatorId !== currentUser.id) {
+        return false;
+      }
+
       if (filterMethod !== 'All' && p.paymentMethod !== filterMethod) return false;
       if (filterOperator !== 'All' && p.operatorId !== filterOperator) return false;
 
@@ -149,8 +161,36 @@ export const Payments: React.FC = () => {
   }, [payments, filterPeriod, filterMethod, filterOperator, searchQuery, currentUser]);
 
   // Tab-specific payment lists
-  const activePayments = useMemo(() => baseFilteredPayments.filter(p => p.status === 'Pendiente'), [baseFilteredPayments]);
-  const historialPayments = useMemo(() => baseFilteredPayments.filter(p => p.status !== 'Pendiente'), [baseFilteredPayments]);
+  const activePayments = useMemo(() => {
+    return baseFilteredPayments.filter(p => 
+      p.status === 'Pendiente' || 
+      (currentUser?.role === 'Admin' && p.status === 'Revision')
+    );
+  }, [baseFilteredPayments, currentUser]);
+
+  const revisionPayments = useMemo(() => {
+    return baseFilteredPayments.filter(p => p.status === 'Revision');
+  }, [baseFilteredPayments]);
+
+  const historialPayments = useMemo(() => {
+    return baseFilteredPayments.filter(p => p.status !== 'Pendiente' && p.status !== 'Revision');
+  }, [baseFilteredPayments]);
+
+  // Block shift closing logic
+  const lastShiftClosing = useMemo(() => {
+    if (!currentUser) return null;
+    const userClosings = shiftClosings.filter(sc => sc.operatorId === currentUser.id);
+    if (userClosings.length === 0) return null;
+    return userClosings.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  }, [shiftClosings, currentUser]);
+
+  const isShiftClosingBlocked = useMemo(() => {
+    if (!lastShiftClosing) return false;
+    const lastClosingTime = new Date(lastShiftClosing.createdAt).getTime();
+    const now = new Date().getTime();
+    const hoursSinceLastClosing = (now - lastClosingTime) / (1000 * 60 * 60);
+    return hoursSinceLastClosing < 5;
+  }, [lastShiftClosing]);
 
   // Filtered shift closings
   const filteredShiftClosings = useMemo(() => {
@@ -181,8 +221,15 @@ export const Payments: React.FC = () => {
     baseFilteredPayments.forEach(pay => {
       if (pay.status === 'Rechazado') return;
       let assignedCtId = 'other';
-      const matchedPc = pcs.find(pc => pay.offerApplied && pay.offerApplied.toUpperCase().includes(pc.id.toUpperCase()));
-      if (matchedPc && matchedPc.consoleTypeId) assignedCtId = matchedPc.consoleTypeId;
+
+      // Check if it's an Extra or Inventory Sale
+      const isExtraOrInventory = pay.offerApplied && (pay.offerApplied.startsWith('Extras') || pay.offerApplied.startsWith('Venta Inventario'));
+      
+      if (!isExtraOrInventory) {
+        const matchedPc = pcs.find(pc => pay.offerApplied && pay.offerApplied.toUpperCase().includes(pc.id.toUpperCase()));
+        if (matchedPc && matchedPc.consoleTypeId) assignedCtId = matchedPc.consoleTypeId;
+      }
+      
       if (summary[assignedCtId]) {
         summary[assignedCtId].amount += pay.amountUsd;
         summary[assignedCtId].count += 1;
@@ -220,12 +267,11 @@ export const Payments: React.FC = () => {
   const handleCloseShift = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const report = await closeShift({ cashUsd: cashUsdInHand, cashVes: cashVesInHand, notes: shiftNotes });
+      const report = await closeShift({ notes: shiftNotes });
       if (report) {
         setGeneratedClosingReport(report);
-        setCashUsdInHand(0);
-        setCashVesInHand(0);
         setShiftNotes('');
+        setShowClosingModal(false);
         toast.success('✅ Caja Cerrada', `Turno finalizado. Total: $${report.totalUsdGenerated.toFixed(2)}`);
       } else {
         toast.error('Error al cerrar caja', 'No se pudo generar el reporte del servidor.');
@@ -345,35 +391,81 @@ export const Payments: React.FC = () => {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Corte de Caja</title>
+          <title>Corte de Caja - Game Zone</title>
           <style>
-            body { font-family: 'Courier New', monospace; width: 300px; padding: 10px; font-size: 0.85em; }
+            @page {
+              size: 80mm auto;
+              margin: 0;
+            }
+            body {
+              font-family: 'Arial', sans-serif;
+              width: 70mm;
+              margin: 0 auto;
+              padding: 6mm 2mm;
+              font-size: 11px;
+              line-height: 1.4;
+              color: #000;
+              background: #fff;
+            }
             .center { text-align: center; }
-            .line { border-bottom: 1px dashed #000; margin: 10px 0; }
-            .flex { display: flex; justify-content: space-between; }
+            .header-title { font-size: 16px; font-weight: 800; letter-spacing: 1px; margin: 0; }
+            .header-subtitle { font-size: 10px; font-weight: bold; text-transform: uppercase; margin: 2px 0 0; color: #555; }
+            .divider { border-top: 1px dashed #000; margin: 8px 0; }
+            .flex { display: flex; justify-content: space-between; align-items: baseline; }
+            .flex-bold { display: flex; justify-content: space-between; align-items: baseline; font-weight: bold; font-size: 12px; }
+            .info-label { color: #333; }
+            .info-value { font-weight: bold; text-align: right; }
+            .section-title { font-size: 10px; font-weight: bold; text-transform: uppercase; margin: 10px 0 4px; text-align: left; text-decoration: underline; }
+            .footer { margin-top: 15px; font-size: 9px; font-weight: bold; color: #444; }
           </style>
         </head>
         <body>
-          <div class="center"><h3>*** GAME ZONE ***</h3><p>COMPROBANTE DE CIERRE DE CAJA</p></div>
-          <div class="line"></div>
-          <p><strong>Cierre ID:</strong> ${closing.id.substring(0, 12)}...</p>
-          <p><strong>Operador:</strong> ${closing.operatorName}</p>
-          <p><strong>Fecha:</strong> ${new Date(closing.createdAt).toLocaleString()}</p>
-          <div class="line"></div>
-          <div class="flex"><span>Transacciones:</span><span>${closing.details.paymentsCount}</span></div>
-          <div class="flex"><span>Minutos Juegos:</span><span>${closing.totalTimeMinutes} min</span></div>
-          <div class="line"></div>
-          <div class="flex"><strong>Total USD ($):</strong><strong>$${closing.totalUsdGenerated.toFixed(2)}</strong></div>
-          <div class="flex"><strong>Total VES (Bs.):</strong><strong>${closing.totalVesGenerated.toFixed(2)} Bs</strong></div>
-          <div class="line"></div>
-          <div class="flex"><span>Efectivo USD:</span><span>$${closing.details.cashUsd.toFixed(2)}</span></div>
-          <div class="flex"><span>Efectivo Bs.:</span><span>${closing.details.cashVes.toFixed(2)} Bs.</span></div>
-          <div class="flex"><span>Pago Movil Bs.:</span><span>${closing.details.pagoMovilVes.toFixed(2)} Bs.</span></div>
-          <div class="flex"><span>Punto Venta Bs.:</span><span>${closing.details.posVes.toFixed(2)} Bs.</span></div>
-          <div class="line"></div>
-          ${closing.details.notes ? `<p><strong>Notas:</strong> ${closing.details.notes}</p>` : ''}
-          <p class="center">GRACIAS POR SU JORNADA</p>
-          <script>window.print();</script>
+          <div class="center">
+            <h1 class="header-title">GAME ZONE</h1>
+            <p class="header-subtitle">Comprobante de Cierre de Caja</p>
+          </div>
+          <div class="divider"></div>
+          <div class="flex"><span class="info-label">Cierre ID:</span><span class="info-value">${closing.id.substring(0, 8).toUpperCase()}-${closing.id.substring(9, 13).toUpperCase()}</span></div>
+          <div class="flex"><span class="info-label">Operador:</span><span class="info-value">${closing.operatorName}</span></div>
+          <div class="flex"><span class="info-label">Fecha:</span><span class="info-value">${new Date(closing.createdAt).toLocaleString('es-VE')}</span></div>
+          <div class="divider"></div>
+          
+          <div class="section-title">Resumen de Actividad</div>
+          <div class="flex"><span class="info-label">Transacciones:</span><span class="info-value">${closing.details?.paymentsCount || 0}</span></div>
+          <div class="flex"><span class="info-label">Minutos de Juego:</span><span class="info-value">${closing.totalTimeMinutes} min</span></div>
+          
+          <div class="divider"></div>
+          
+          <div class="section-title">Ingresos Totales</div>
+          <div class="flex-bold"><span class="info-label">Total USD:</span><span class="info-value">$${closing.totalUsdGenerated.toFixed(2)}</span></div>
+          <div class="flex-bold"><span class="info-label">Total VES:</span><span class="info-value">${closing.totalVesGenerated.toFixed(2)} Bs</span></div>
+          
+          <div class="divider"></div>
+          
+          <div class="section-title">Desglose por Método</div>
+          <div class="flex"><span class="info-label">Efectivo USD ($):</span><span class="info-value">$${(closing.details?.cashUsd || 0).toFixed(2)}</span></div>
+          <div class="flex"><span class="info-label">Efectivo VES (Bs):</span><span class="info-value">${(closing.details?.cashVes || 0).toFixed(2)} Bs</span></div>
+          <div class="flex"><span class="info-label">Pago Móvil (Bs):</span><span class="info-value">${(closing.details?.pagoMovilVes || 0).toFixed(2)} Bs</span></div>
+          <div class="flex"><span class="info-label">Punto de Venta (Bs):</span><span class="info-value">${(closing.details?.posVes || 0).toFixed(2)} Bs</span></div>
+          <div class="flex"><span class="info-label">Transferencia (Bs):</span><span class="info-value">${(closing.details?.transferVes || 0).toFixed(2)} Bs</span></div>
+          
+          ${closing.details?.notes ? `
+            <div class="divider"></div>
+            <div style="font-size: 9px; margin-top: 4px; word-wrap: break-word;">
+              <strong>Notas:</strong> ${closing.details.notes}
+            </div>
+          ` : ''}
+          
+          <div class="divider"></div>
+          <div class="center footer">
+            *** GRACIAS POR SU JORNADA ***
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() { window.close(); }, 500);
+            }
+          </script>
         </body>
       </html>
     `);
@@ -415,7 +507,11 @@ export const Payments: React.FC = () => {
       <td><span style={{ color: 'var(--text-secondary)' }}>{pay.amountVes.toFixed(2)} Bs.</span></td>
       <td>{pay.bcvRate.toFixed(2)} Bs/$</td>
       <td>
-        <span className={`badge ${pay.status === 'Validado' ? 'badge-green' : pay.status === 'Pendiente' ? 'badge-yellow' : 'badge-red'}`}>
+        <span className={`badge ${
+          pay.status === 'Validado' ? 'badge-green' : 
+          pay.status === 'Pendiente' ? 'badge-yellow' : 
+          pay.status === 'Revision' ? 'badge-purple' : 'badge-red'
+        }`}>
           {pay.status}
         </span>
         {pay.hasReceipt && (
@@ -442,7 +538,7 @@ export const Payments: React.FC = () => {
       </td>
       {currentUser?.role === 'Admin' && (
         <td style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-          {pay.status === 'Pendiente' ? (
+          {pay.status === 'Pendiente' || pay.status === 'Revision' ? (
             <>
               <button
                 className="btn btn-green"
@@ -461,7 +557,7 @@ export const Payments: React.FC = () => {
             </>
           ) : (
             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {pay.status === 'Validado' ? `Validado por ${pay.validatorName?.split(' ')[0]}` : 'Rechazado'}
+              {pay.status === 'Validado' ? `Validado por ${pay.validatorName?.split(' ')[0]}` : pay.status === 'Rechazado' ? 'Rechazado' : pay.status}
             </span>
           )}
         </td>
@@ -500,7 +596,7 @@ export const Payments: React.FC = () => {
     </div>
   );
 
-  const currentTabList = activeTab === 'active' ? activePayments : historialPayments;
+  const currentTabList = activeTab === 'active' ? activePayments : activeTab === 'revision' ? revisionPayments : historialPayments;
 
   return (
     <div className="view-container">
@@ -514,12 +610,17 @@ export const Payments: React.FC = () => {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {currentUser?.role === 'Operador' && (
+          {(currentUser?.role === 'Operador' || currentUser?.role === 'Encargado') && (
             <>
               <button className="btn btn-primary" onClick={() => setShowRegisterModal(true)}>
                 <DollarSign size={16} /> Cobro Manual
               </button>
-              <button className="btn btn-danger" onClick={() => setShowClosingModal(true)}>
+              <button 
+                className="btn btn-danger" 
+                onClick={() => setShowClosingConfirmModal(true)}
+                disabled={isShiftClosingBlocked}
+                title={isShiftClosingBlocked ? "Debes esperar 5 horas desde tu último cierre de caja" : "Cerrar Caja"}
+              >
                 <Clipboard size={16} /> Cerrar Caja
               </button>
             </>
@@ -568,6 +669,18 @@ export const Payments: React.FC = () => {
             )}
           </button>
           <button
+            className={`payments-tab-btn ${activeTab === 'revision' ? 'active' : ''}`}
+            onClick={() => setActiveTab('revision')}
+          >
+            <Eye size={16} />
+            En Revisión
+            {revisionPayments.length > 0 && (
+              <span style={{ background: 'var(--neon-purple)', color: 'white', borderRadius: '10px', padding: '1px 7px', fontSize: '0.7rem', fontWeight: 700 }}>
+                {revisionPayments.length}
+              </span>
+            )}
+          </button>
+          <button
             className={`payments-tab-btn ${activeTab === 'historial' ? 'active' : ''}`}
             onClick={() => setActiveTab('historial')}
           >
@@ -596,7 +709,8 @@ export const Payments: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
               <h3 style={{ color: 'white', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
                 <Filter size={16} style={{ color: 'var(--neon-purple)' }} />
-                {activeTab === 'active' ? 'Cobros Pendientes de Validación' : 'Historial de Pagos Procesados'}
+                {activeTab === 'active' ? 'Cobros Pendientes de Validación' : 
+                 activeTab === 'revision' ? 'Pagos en Revisión (Turno Cerrado)' : 'Historial de Pagos Procesados'}
               </h3>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" onClick={() => handleExportCSV(currentTabList)} disabled={currentTabList.length === 0} style={{ padding: '6px 12px', fontSize: '0.85rem' }}>
@@ -688,6 +802,19 @@ export const Payments: React.FC = () => {
                 <p style={{ color: 'var(--text-secondary)' }}>Todos los cobros han sido procesados o no hay transacciones activas.</p>
               </div>
             ) : renderPaymentsTable(activePayments, 'No hay pagos pendientes.')}
+          </>
+        )}
+
+        {/* ─── TAB: REVISION ─── */}
+        {activeTab === 'revision' && (
+          <>
+            {revisionPayments.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 24px' }}>
+                <Eye size={48} style={{ color: 'var(--text-muted)', margin: '0 auto 16px' }} />
+                <h3 style={{ color: 'white', marginBottom: '8px' }}>Sin pagos en revisión</h3>
+                <p style={{ color: 'var(--text-secondary)' }}>No hay pagos esperando validación por parte del administrador.</p>
+              </div>
+            ) : renderPaymentsTable(revisionPayments, 'No hay pagos en revisión.')}
           </>
         )}
 
@@ -876,7 +1003,11 @@ export const Payments: React.FC = () => {
                         <td style={{ fontWeight: 700, color: 'white' }}>${pay.amountUsd.toFixed(2)}</td>
                         <td style={{ color: 'var(--text-secondary)' }}>{pay.amountVes.toFixed(2)} Bs.</td>
                         <td>
-                          <span className={`badge ${pay.status === 'Validado' ? 'badge-green' : pay.status === 'Pendiente' ? 'badge-yellow' : 'badge-red'}`}>
+                          <span className={`badge ${
+                            pay.status === 'Validado' ? 'badge-green' : 
+                            pay.status === 'Pendiente' ? 'badge-yellow' : 
+                            pay.status === 'Revision' ? 'badge-purple' : 'badge-red'
+                          }`}>
                             {pay.status}
                           </span>
                         </td>
@@ -1019,6 +1150,34 @@ export const Payments: React.FC = () => {
         </div>
       )}
 
+      {/* ─── CONFIRMACION CIERRE DE CAJA MODAL ─── */}
+      {showClosingConfirmModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <h3 style={{ color: 'white' }}>⚠️ Advertencia</h3>
+              <button className="btn btn-secondary" style={{ padding: '4px 8px' }} onClick={() => setShowClosingConfirmModal(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{ textAlign: 'center', padding: '24px 16px' }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: '1.5' }}>
+                ¿Estás seguro que quieres hacer el cierre final? ¿Ya tu turno acabó?
+              </p>
+              <p style={{ color: 'var(--neon-purple)', fontSize: '0.85rem', marginTop: '16px', fontWeight: 'bold' }}>
+                El botón de cerrar caja se bloqueará por 5 horas después de realizar esta acción.
+              </p>
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setShowClosingConfirmModal(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-danger" onClick={() => { setShowClosingConfirmModal(false); setShowClosingModal(true); }}>
+                Sí, estoy seguro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── CIERRE DE CAJA MODAL (Operador) ─── */}
       {showClosingModal && (
         <div className="modal-overlay">
@@ -1031,18 +1190,10 @@ export const Payments: React.FC = () => {
               <form onSubmit={handleCloseShift}>
                 <div className="modal-body">
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '16px', fontSize: '0.9rem' }}>
-                    Al cerrar la caja se consolidarán todos los pagos registrados por ti hoy. Ingresa el conteo físico del dinero en caja:
+                    Al cerrar la caja se consolidarán todos los pagos pendientes registrados por ti hoy y pasarán a revisión por un Administrador.
                   </p>
                   <div className="form-group">
-                    <label className="form-label">Efectivo en Caja ($ USD)</label>
-                    <input type="number" className="form-input" min="0" step="0.01" value={cashUsdInHand || ''} onChange={e => setCashUsdInHand(parseFloat(e.target.value) || 0)} placeholder="Ingrese la cantidad" required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Efectivo en Caja (Bs. VES)</label>
-                    <input type="number" className="form-input" min="0" step="0.01" value={cashVesInHand || ''} onChange={e => setCashVesInHand(parseFloat(e.target.value) || 0)} placeholder="Ingrese la cantidad" required />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Notas / Observaciones de Cierre</label>
+                    <label className="form-label">Notas / Observaciones de Cierre (Opcional)</label>
                     <textarea className="form-textarea" rows={3} placeholder="Indica si hubo alguna discrepancia o reporte de PC" value={shiftNotes} onChange={e => setShiftNotes(e.target.value)} />
                   </div>
                 </div>

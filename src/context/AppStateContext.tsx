@@ -6,7 +6,7 @@ import { apiUrl } from '../lib/api';
 // -------------------------------------------------------------
 export type UserRole = 'Admin' | 'Encargado' | 'Operador';
 export type PCStatus = 'Disponible' | 'En Uso' | 'Bloqueada' | 'Suspendida';
-export type PaymentStatus = 'Pendiente' | 'Validado' | 'Rechazado';
+export type PaymentStatus = 'Pendiente' | 'Validado' | 'Rechazado' | 'Revision';
 export type PaymentMethod = 'Pago Móvil' | 'Efectivo $' | 'Efectivo Bs.' | 'Transferencia' | 'Punto de Venta';
 export type CredentialCategory = 'PC Login' | 'Steam' | 'Epic Games' | 'Riot Games' | 'Otros';
 
@@ -127,6 +127,7 @@ export interface ShiftClosing {
     cashVes: number;
     pagoMovilVes: number;
     posVes: number;
+    transferVes?: number;
     paymentsCount: number;
     notes: string;
   };
@@ -194,7 +195,7 @@ interface AppStateContextType {
   rejectPayment: (paymentId: string) => void;
   
   // Shift Closings
-  closeShift: (details: { cashUsd: number; cashVes: number; notes: string }) => Promise<ShiftClosing | null>;
+  closeShift: (details: { notes: string }) => Promise<ShiftClosing | null>;
   
   // Staff CRUD
   addUser: (username: string, fullName: string, role: UserRole, password?: string) => void;
@@ -705,13 +706,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   // SHIFT CLOSING (Cerrar Caja)
   // -------------------------------------------------------------
-  const closeShift = async (details: { cashUsd: number; cashVes: number; notes: string }) => {
+  const closeShift = async (details: { notes: string }) => {
     if (!currentUser) throw new Error('No user connected');
     
-    const today = new Date().toDateString();
     const operatorPayments = payments.filter((p) => {
-      const pDate = new Date(p.createdAt).toDateString();
-      return p.operatorId === currentUser.id && pDate === today;
+      return p.operatorId === currentUser.id && p.status === 'Pendiente';
     });
 
     const totalUsdGenerated = operatorPayments
@@ -730,6 +729,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .filter(p => p.paymentMethod === 'Punto de Venta')
       .reduce((sum, p) => sum + p.amountVes, 0);
 
+    const cashUsd = operatorPayments
+      .filter(p => p.paymentMethod === 'Efectivo $')
+      .reduce((sum, p) => sum + p.amountUsd, 0);
+
+    const cashVes = operatorPayments
+      .filter(p => p.paymentMethod === 'Efectivo Bs.')
+      .reduce((sum, p) => sum + p.amountVes, 0);
+
+    const transferVes = operatorPayments
+      .filter(p => p.paymentMethod === 'Transferencia')
+      .reduce((sum, p) => sum + p.amountVes, 0);
+
     const totalTimeMinutes = operatorPayments.length * 60; 
 
     const bodyData = {
@@ -739,10 +750,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       totalVesGenerated,
       totalTimeMinutes,
       details: {
-        cashUsd: details.cashUsd,
-        cashVes: details.cashVes,
+        cashUsd,
+        cashVes,
         pagoMovilVes: pmVes,
-        posVes: posVes,
+        posVes,
+        transferVes,
         paymentsCount: operatorPayments.length,
         notes: details.notes,
       }
@@ -806,10 +818,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteUser = async (id: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(apiUrl(`/api/users/${id}`), {
+      const res = await fetch(apiUrl(`/api/users/${id}`), {
         method: 'DELETE'
       });
-      writeLog('USER_DELETE', `Usuario inhabilitado ID: ${id}`, 'Éxito');
+      const data = await res.json();
+      
+      if (data.deleted) {
+        alert('Usuario eliminado permanentemente.');
+        writeLog('USER_DELETE', `Usuario eliminado permanentemente ID: ${id}`, 'Éxito');
+      } else {
+        alert('ADVERTENCIA: ' + (data.message || 'El usuario no puede ser eliminado y fue marcado como Inactivo.'));
+        writeLog('USER_DELETE', `Usuario inhabilitado ID: ${id}`, 'Éxito');
+      }
       fetchAllData();
     } catch (e) {
       console.error(e);

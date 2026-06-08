@@ -188,11 +188,16 @@ app.put('/api/users/:id', async (req, res) => {
 app.delete('/api/users/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    // Eliminación lógica cambiando el estado
-    await pool.query(`UPDATE users SET status = 'Inactivo' WHERE id = $1`, [id]);
-    res.json({ success: true });
+    await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+    res.json({ success: true, deleted: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    // 23503: foreign_key_violation
+    if (error.code === '23503') {
+      await pool.query(`UPDATE users SET status = 'Inactivo' WHERE id = $1`, [id]);
+      res.json({ success: true, deleted: false, message: 'El usuario tiene historial financiero y no puede ser eliminado por auditoría. Ha sido marcado como Inactivo.' });
+    } else {
+      res.status(500).json({ error: error.message });
+    }
   }
 });
 
@@ -753,6 +758,16 @@ app.post('/api/shift-closings', async (req, res) => {
       LEFT JOIN users u ON sc.operator_id = u.id
       WHERE sc.id = $1
     `, [result.rows[0].id]);
+
+    console.log('[DEBUG] Created shift closing. opId:', opId, 'result ID:', result.rows[0].id);
+
+    // Update all Pendiente payments for this operator to Revision
+    const updateRes = await pool.query(`
+      UPDATE payments
+      SET status = 'Revision'
+      WHERE operator_id = $1 AND status = 'Pendiente'
+    `, [opId]);
+    console.log('[DEBUG] Update payments result. rowCount:', updateRes.rowCount);
 
     res.status(201).json({
       ...result.rows[0],

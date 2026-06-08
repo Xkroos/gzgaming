@@ -7,7 +7,7 @@
  * Para configurar en producción, agrega en Netlify:
  *   VITE_API_URL = https://tu-backend.up.railway.app
  */
-export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+export const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 /**
  * Construye una URL de API completa.
@@ -17,3 +17,4 @@ export const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
+

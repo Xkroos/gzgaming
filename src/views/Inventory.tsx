@@ -469,64 +469,70 @@ export const Inventory: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Cantidad a Vender</label>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    min="1" 
-                    max={activeItemForSale.stock}
-                    value={saleAmount || ''}
-                    onChange={e => setSaleAmount(Math.min(activeItemForSale.stock, Math.max(1, parseInt(e.target.value) || 1)))}
-                    placeholder="Ingrese la cantidad"
-                    required 
-                  />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Cantidad a Vender</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      min="1" 
+                      max={activeItemForSale.stock}
+                      value={saleAmount || ''}
+                      onChange={e => setSaleAmount(Math.min(activeItemForSale.stock, Math.max(1, parseInt(e.target.value) || 1)))}
+                      placeholder="Cantidad"
+                      required 
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Método de Pago</label>
+                    <select 
+                      className="form-select"
+                      value={salePaymentMethod}
+                      onChange={e => setSalePaymentMethod(e.target.value as PaymentMethod)}
+                    >
+                      <option value="Pago Móvil">Pago Móvil</option>
+                      <option value="Efectivo $">Efectivo $</option>
+                      <option value="Efectivo Bs.">Efectivo Bs.</option>
+                      <option value="Transferencia">Transferencia</option>
+                      <option value="Punto de Venta">Punto de Venta</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Método de Pago</label>
-                  <select 
-                    className="form-select"
-                    value={salePaymentMethod}
-                    onChange={e => setSalePaymentMethod(e.target.value as PaymentMethod)}
-                  >
-                    <option value="Pago Móvil">Pago Móvil</option>
-                    <option value="Efectivo $">Efectivo $</option>
-                    <option value="Efectivo Bs.">Efectivo Bs.</option>
-                    <option value="Transferencia">Transferencia</option>
-                    <option value="Punto de Venta">Punto de Venta</option>
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Referencia del Pago</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Ej. #12345678"
+                      value={saleReference}
+                      onChange={e => setSaleReference(e.target.value)}
+                      required={salePaymentMethod !== 'Efectivo $'}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Comprobante (Opcional)</label>
+                    <input 
+                      type="file" 
+                      id="inventory-sale-receipt"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      onChange={e => handleFileChange(e, setSaleReceiptImageUrl)}
+                    />
+                    <label htmlFor="inventory-sale-receipt" className="file-upload-trigger" style={{ padding: '8px 12px', fontSize: '0.8rem', justifyContent: 'center' }}>
+                      {saleReceiptImageUrl ? '✅ Cargado' : '📎 Subir imagen'}
+                    </label>
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Referencia del Pago</label>
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Ej. #12345678"
-                    value={saleReference}
-                    onChange={e => setSaleReference(e.target.value)}
-                    required={salePaymentMethod !== 'Efectivo $'}
-                  />
-                  {salePaymentMethod === 'Efectivo $' && <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Opcional para efectivo en dólares.</span>}
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Adjuntar Comprobante de Pago</label>
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    className="form-input"
-                    onChange={e => handleFileChange(e, setSaleReceiptImageUrl)}
-                    required={salePaymentMethod !== 'Efectivo $'}
-                  />
-                  {saleReceiptImageUrl && (
-                    <div style={{ marginTop: '12px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '10px', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>Vista previa del comprobante cargado:</p>
-                      <img src={saleReceiptImageUrl} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '140px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.05)' }} />
-                    </div>
-                  )}
-                </div>
+                {saleReceiptImageUrl && (
+                  <div style={{ marginTop: '12px', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '8px', textAlign: 'center', background: 'rgba(0,0,0,0.3)' }}>
+                    <img src={saleReceiptImageUrl} alt="Comprobante" style={{ maxWidth: '100%', maxHeight: '80px', borderRadius: '4px', objectFit: 'cover' }} />
+                  </div>
+                )}
 
                 {/* Real-time Calculation Panel */}
                 <div style={{ background: 'rgba(0,240,255,0.05)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(0,240,255,0.15)', marginTop: '20px' }}>

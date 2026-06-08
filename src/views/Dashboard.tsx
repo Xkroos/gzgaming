@@ -232,8 +232,8 @@ export const Dashboard: React.FC = () => {
           <h3 style={{ color: 'white', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <TrendingUp size={20} style={{ color: 'var(--neon-purple)' }} /> Historial de Ingresos de la Semana
           </h3>
-          <div style={{ width: '100%', height: 300, minWidth: 0 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <div style={{ width: '100%', height: 300, minWidth: 0, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={last7DaysData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorUsd" x1="0" y1="0" x2="0" y2="1">
@@ -262,8 +262,8 @@ export const Dashboard: React.FC = () => {
         {/* Pie Chart: Payment Methods */}
         <div className="glass-card">
           <h3 style={{ color: 'white', marginBottom: '16px' }}>Métodos de Pago ($ Equivalente)</h3>
-          <div style={{ width: '100%', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <div style={{ width: '100%', height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={200}>
               <PieChart>
                 <Pie
                   data={displayPaymentMethodData}
@@ -290,8 +290,8 @@ export const Dashboard: React.FC = () => {
         {/* Bar Chart: Revenue by PC */}
         <div className="glass-card">
           <h3 style={{ color: 'white', marginBottom: '16px' }}>Rendimiento Financiero por Equipo (USD)</h3>
-          <div style={{ width: '100%', height: 250, minWidth: 0 }}>
-            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+          <div style={{ width: '100%', height: 250, minWidth: 0, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={250}>
               <BarChart data={displayPcRevenueData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="name" stroke="var(--text-secondary)" fontSize={11} />
