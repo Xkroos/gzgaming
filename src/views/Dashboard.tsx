@@ -286,7 +286,7 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="charts-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+      <div className="charts-grid charts-grid-2col">
         {/* Bar Chart: Revenue by PC */}
         <div className="glass-card">
           <h3 style={{ color: 'white', marginBottom: '16px' }}>Rendimiento Financiero por Equipo (USD)</h3>
@@ -312,7 +312,7 @@ export const Dashboard: React.FC = () => {
           <h3 style={{ color: 'white', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <CheckCircle size={20} style={{ color: 'var(--neon-green)' }} /> Historial de Cierre de Cajas
           </h3>
-          <div style={{ flex: 1, overflowY: 'auto', maxHeight: '250px' }}>
+          <div style={{ flex: 1, overflow: 'auto', maxHeight: '250px' }}>
             {shiftClosings.length === 0 ? (
               <p style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '20px' }}>No hay cierres de caja registrados.</p>
             ) : (

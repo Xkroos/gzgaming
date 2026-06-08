@@ -614,6 +614,18 @@
   margin-bottom: 24px;
 }
 
+.charts-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.charts-grid > *,
+.charts-grid-2col > * {
+  min-width: 0;
+}
+
 /* Receipt Visor Modal */
 .comprobante-visor-container {
   display: flex;
@@ -680,7 +692,8 @@
     gap: 16px;
   }
 
-  .charts-grid {
+  .charts-grid,
+  .charts-grid-2col {
     grid-template-columns: 1fr;
   }
 
@@ -905,7 +918,8 @@
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .charts-grid {
+  .charts-grid,
+  .charts-grid-2col {
     grid-template-columns: 1fr;
   }
 
@@ -1334,5 +1348,21 @@
   }
   .mobile-only {
     display: block !important;
+  }
+}
+
+.categories-toggle-btn {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .categories-toggle-btn {
+    display: flex !important;
+  }
+  .categories-grid {
+    display: none !important;
+  }
+  .categories-grid.mobile-show {
+    display: grid !important;
   }
 }

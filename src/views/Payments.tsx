@@ -4,7 +4,8 @@ import { useAppState } from '../context/AppStateContext';
 import type { Payment, PaymentMethod, ShiftClosing } from '../context/AppStateContext';
 import { useToast } from '../components/ToastNotification';
 import { 
-  DollarSign, Check, X, Printer, Clipboard, Eye, Receipt, History, Archive, Filter, FileText, Download, User
+  DollarSign, Check, X, Printer, Clipboard, Eye, Receipt, History, Archive, Filter, FileText, Download, User,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 
 type PaymentsTab = 'active' | 'revision' | 'historial' | 'cierres';
@@ -20,6 +21,7 @@ export const Payments: React.FC = () => {
   // TAB STATE
   // ─────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<PaymentsTab>('active');
+  const [showMobileCategories, setShowMobileCategories] = useState(false);
 
   // ─────────────────────────────────────────
   // FILTER STATES
@@ -636,8 +638,31 @@ export const Payments: React.FC = () => {
       {/* ─── CONSOLE SUMMARY (Admin/Encargado) ─── */}
       {currentUser?.role !== 'Operador' && (
         <div className="glass-card" style={{ marginBottom: '24px', padding: '20px' }}>
-          <h3 style={{ color: 'white', marginBottom: '12px', fontSize: '1.1rem' }}>Resumen por Consola / Categoría</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ color: 'white', margin: 0, fontSize: '1.1rem' }}>Resumen por Consola / Categoría</h3>
+            <button
+              className="categories-toggle-btn"
+              onClick={() => setShowMobileCategories(!showMobileCategories)}
+              style={{
+                background: 'rgba(138, 43, 226, 0.1)',
+                border: '1px solid rgba(138, 43, 226, 0.3)',
+                borderRadius: 'var(--radius-sm)',
+                color: 'var(--neon-purple)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '6px'
+              }}
+              title="Mostrar/ocultar resumen"
+            >
+              {showMobileCategories ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </button>
+          </div>
+          <div 
+            className={`categories-grid ${showMobileCategories ? 'mobile-show' : ''}`}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}
+          >
             {getConsoleSummary().map(item => (
               <div key={item.name} style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border-glass)', borderRadius: '8px', padding: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span style={{ fontSize: '2rem' }}>{item.emoji}</span>
