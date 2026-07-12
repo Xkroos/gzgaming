@@ -19,7 +19,9 @@ const allowedOrigins = [
   'http://localhost:4173',
   'http://2.24.68.214',
   'https://gamezoneoficial.com',
-  'https://www.gamezoneoficial.com'
+  'https://www.gamezoneoficial.com',
+  'http://gamezoneoficial.com',
+  'http://www.gamezoneoficial.com'
 ];
 app.use(cors({
   origin: (origin, callback) => {
