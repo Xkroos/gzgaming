@@ -7,7 +7,7 @@ import {
 
 export const Inventory: React.FC = () => {
   const { 
-    inventory, inventoryLogs, restockProduct, sellProduct, addProduct, bcvRate, currentUser 
+    inventory, inventoryLogs, restockProduct, sellProduct, addProduct, deleteProduct, bcvRate, currentUser 
   } = useAppState();
 
   const [showAddProduct, setShowAddProduct] = useState(false);
@@ -267,13 +267,26 @@ export const Inventory: React.FC = () => {
                           Vender
                         </button>
                         {!isOperator && (
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '6px 10px', fontSize: '0.75rem' }} 
-                            onClick={() => setActiveItemForRestock(item)}
-                          >
-                            Recargar
-                          </button>
+                          <>
+                            <button 
+                              className="btn btn-secondary" 
+                              style={{ padding: '6px 10px', fontSize: '0.75rem' }} 
+                              onClick={() => setActiveItemForRestock(item)}
+                            >
+                              Recargar
+                            </button>
+                            <button 
+                              className="btn btn-danger" 
+                              style={{ padding: '6px 10px', fontSize: '0.75rem' }} 
+                              onClick={() => {
+                                if (confirm(`¿Estás seguro de eliminar "${item.name}" del inventario?`)) {
+                                  deleteProduct(item.id);
+                                }
+                              }}
+                            >
+                              Eliminar
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>

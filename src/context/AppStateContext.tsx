@@ -40,6 +40,7 @@ export interface PC {
   clientName?: string;
   currentSessionId?: string;
   consoleTypeId?: string;
+  tuyaDeviceId?: string;
 }
 
 export interface Plan {
@@ -213,6 +214,7 @@ interface AppStateContextType {
     skipPayment?: boolean
   ) => void;
   addProduct: (product: Omit<InventoryItem, 'id'>) => void;
+  deleteProduct: (id: string) => void;
   
   // Plans & Offers
   addPlan: (plan: Omit<Plan, 'id' | 'isActive'>) => void;
@@ -609,7 +611,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ipAddress: pcData.ipAddress,
           hourlyRate: pcData.hourlyRate,
           details: pcData.details,
-          consoleTypeId: pcData.consoleTypeId
+          consoleTypeId: pcData.consoleTypeId,
+          tuyaDeviceId: pcData.tuyaDeviceId
         })
       });
       if (res.ok) {
@@ -938,8 +941,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         writeLog('INV_CREATE', `Nuevo producto en inventario: ${newItem.name} (Compra: $${newItem.purchasePrice.toFixed(2)}, Venta: $${newItem.priceUsd.toFixed(2)})`, 'Éxito');
         fetchAllData();
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error('Error adding product:', error);
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    try {
+      const res = await fetch(apiUrl(`/api/inventory/${id}`), { method: 'DELETE' });
+      if (res.ok) {
+        setInventory(prev => prev.filter(i => i.id !== id));
+      }
+    } catch (error) {
+      console.error('Error deleting product:', error);
     }
   };
 
@@ -1157,6 +1171,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         restockProduct,
         sellProduct,
         addProduct,
+        deleteProduct,
         
         addPlan,
         updatePlan,

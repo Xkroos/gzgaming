@@ -28,6 +28,7 @@ export const PCConsole: React.FC = () => {
   const [pcDetails, setPcDetails] = useState('');
   const [pcConsoleTypeId, setPcConsoleTypeId] = useState('');
   const [pcHourlyRate, setPcHourlyRate] = useState(2.00);
+  const [pcTuyaDeviceId, setPcTuyaDeviceId] = useState('');
 
   const handleConsoleTypeChange = (typeId: string) => {
     setPcConsoleTypeId(typeId);
@@ -45,6 +46,7 @@ export const PCConsole: React.FC = () => {
       consoleTypeId: pcConsoleTypeId,
       hourlyRate: pcHourlyRate,
       details: pcDetails.trim(),
+      tuyaDeviceId: pcTuyaDeviceId.trim() || undefined,
     };
 
     if (editingPC) {
@@ -61,6 +63,7 @@ export const PCConsole: React.FC = () => {
     setPcDetails('');
     setPcConsoleTypeId('');
     setPcHourlyRate(2.00);
+    setPcTuyaDeviceId('');
   };
 
   // Assign flow step: 'configure' -> 'pay'
@@ -327,6 +330,7 @@ export const PCConsole: React.FC = () => {
                   setPcConsoleTypeId('');
                   setPcHourlyRate(2.00);
                 }
+                setPcTuyaDeviceId('');
                 setShowAddEditPCModal(true);
               }}
             >
@@ -431,6 +435,7 @@ export const PCConsole: React.FC = () => {
                     setPcConsoleTypeId(firstActiveCt.id);
                     setPcHourlyRate(firstActiveCt.hourlyRate);
                   }
+                  setPcTuyaDeviceId('');
                   setShowAddEditPCModal(true);
                 }}>
                   Agregar Primer Equipo
@@ -452,6 +457,7 @@ export const PCConsole: React.FC = () => {
                     <span className="pc-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Monitor size={18} style={{ color: pc.status === 'Disponible' ? 'var(--neon-green)' : pc.status === 'En Uso' ? 'var(--neon-cyan)' : 'var(--neon-red)' }} />
                       {pc.id}
+                      {pc.tuyaDeviceId && <span title="Conectado a Smart Plug TUYA"><Zap size={14} style={{ color: 'var(--neon-yellow)' }} /></span>}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span className={`badge ${
@@ -476,6 +482,7 @@ export const PCConsole: React.FC = () => {
                               setPcDetails(pc.details);
                               setPcConsoleTypeId(pc.consoleTypeId || '');
                               setPcHourlyRate(pc.hourlyRate);
+                              setPcTuyaDeviceId(pc.tuyaDeviceId || '');
                               setShowAddEditPCModal(true);
                             }}
                           >
@@ -1189,6 +1196,18 @@ export const PCConsole: React.FC = () => {
                       </option>
                     ))}
                   </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Tuya Device ID <span style={{ color: 'var(--neon-yellow)', fontSize: '0.8rem' }}>(Opcional)</span></label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    placeholder="Ej. bf1234567890abcdef" 
+                    value={pcTuyaDeviceId} 
+                    onChange={e => setPcTuyaDeviceId(e.target.value)} 
+                  />
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Para automatizar el encendido/apagado del tomacorriente al iniciar tiempo.</span>
                 </div>
 
                 <div className="form-group">

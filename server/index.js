@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { initDatabase, pool } from './db.js';
+import { setTuyaDeviceState } from './tuya.js';
 
 dotenv.config();
 
@@ -16,6 +17,9 @@ const allowedOrigins = [
   'https://gzgaming-production.up.railway.app',
   'http://localhost:5173',
   'http://localhost:4173',
+  'http://2.24.68.214',
+  'https://gamezoneoficial.com',
+  'https://www.gamezoneoficial.com'
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -63,7 +67,7 @@ function startGameTimer() {
     try {
       // 1. Buscar todas las PCs en uso con tiempo restante > 0
       const activePcs = await pool.query(
-        `SELECT id, remaining_time FROM pcs WHERE status = 'En Uso' AND remaining_time > 0`
+        `SELECT id, remaining_time, tuya_device_id FROM pcs WHERE status = 'En Uso' AND remaining_time > 0`
       );
 
       for (const pc of activePcs.rows) {
@@ -75,6 +79,10 @@ function startGameTimer() {
             `UPDATE pcs SET status = 'Bloqueada', remaining_time = 0 WHERE id = $1`,
             [pc.id]
           );
+
+          if (pc.tuya_device_id) {
+            setTuyaDeviceState(pc.tuya_device_id, false);
+          }
 
           // Registrar en auditoría
           await pool.query(
@@ -263,7 +271,7 @@ app.get('/api/pcs', async (req, res) => {
     const result = await pool.query(`
       SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
              details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId"
+             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
       FROM pcs ORDER BY id ASC
     `);
     res.json(result.rows);
@@ -278,7 +286,7 @@ app.get('/api/pcs/:id', async (req, res) => {
     const result = await pool.query(`
       SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
              details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId"
+             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
       FROM pcs WHERE UPPER(id) = UPPER($1)
     `, [id]);
     if (result.rowCount === 0) {
@@ -326,14 +334,14 @@ app.post('/api/pcs', async (req, res) => {
 
 // Crear, actualizar e individualmente borrar PCs
 app.post('/api/pcs/create', async (req, res) => {
-  const { id, pcName, ipAddress, hourlyRate, details, consoleTypeId } = req.body;
+  const { id, pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId } = req.body;
   try {
     const result = await pool.query(`
-      INSERT INTO pcs (id, pc_name, ip_address, status, hourly_rate, details, console_type_id, remaining_time, total_assigned_time)
-      VALUES ($1, $2, $3, 'Disponible', $4, $5, $6, 0, 0)
+      INSERT INTO pcs (id, pc_name, ip_address, status, hourly_rate, details, console_type_id, remaining_time, total_assigned_time, tuya_device_id)
+      VALUES ($1, $2, $3, 'Disponible', $4, $5, $6, 0, 0, $7)
       RETURNING id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
-                details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", console_type_id as "consoleTypeId"
-    `, [id.toUpperCase(), pcName, ipAddress, hourlyRate, details, consoleTypeId]);
+                details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+    `, [id.toUpperCase(), pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -342,9 +350,16 @@ app.post('/api/pcs/create', async (req, res) => {
 
 app.put('/api/pcs/:id', async (req, res) => {
   const { id } = req.params;
-  const { pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId } = req.body;
+  const { pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, tuyaDeviceId } = req.body;
   try {
-    const result = await pool.query(`
+    const currentResult = await pool.query('SELECT status, tuya_device_id FROM pcs WHERE id = $1', [id]);
+    const currentPc = currentResult.rows[0];
+
+    // Mantenemos tuyaDeviceId si se envía uno nuevo, o dejamos el existente si se envía null explícitamente y queremos borrar, pero lo usual es actualizarlo.
+    // Usaremos tuyaDeviceId undefined para ignorar la actualización.
+    
+    let queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, id];
+    let query = `
       UPDATE pcs 
       SET pc_name = COALESCE($1, pc_name),
           ip_address = COALESCE($2, ip_address),
@@ -356,12 +371,40 @@ app.put('/api/pcs/:id', async (req, res) => {
           total_assigned_time = COALESCE($8, total_assigned_time),
           client_name = COALESCE($9, client_name),
           current_session_id = COALESCE($10, current_session_id)
-      WHERE id = $11
+    `;
+
+    if (tuyaDeviceId !== undefined) {
+      queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, tuyaDeviceId, id];
+      query += `, tuya_device_id = $11 WHERE id = $12`;
+    } else {
+      query += ` WHERE id = $11`;
+    }
+
+    query += `
       RETURNING id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
                 details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-                client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId"
-    `, [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, id]);
-    res.json(result.rows[0]);
+                client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+    `;
+
+    const result = await pool.query(query, queryArgs);
+    const updatedPc = result.rows[0];
+
+    // Logica de TUYA
+    if (currentPc) {
+      const oldStatus = currentPc.status;
+      const newStatus = updatedPc.status;
+      const deviceId = updatedPc.tuyaDeviceId;
+
+      if (deviceId) {
+        if (newStatus === 'En Uso' && oldStatus !== 'En Uso') {
+          setTuyaDeviceState(deviceId, true);
+        } else if ((newStatus === 'Suspendida' || newStatus === 'Disponible' || newStatus === 'Bloqueada') && oldStatus === 'En Uso') {
+          setTuyaDeviceState(deviceId, false);
+        }
+      }
+    }
+
+    res.json(updatedPc);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -651,6 +694,16 @@ app.put('/api/inventory/:id', async (req, res) => {
       RETURNING id, name, description, purchase_price as "purchasePrice", price_usd as "priceUsd", stock, min_stock as "minStock", category
     `, [name, description, purchasePrice, priceUsd, stock, minStock, category, id]);
     res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/inventory/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await pool.query('DELETE FROM inventory WHERE id = $1', [id]);
+    res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

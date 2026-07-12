@@ -57,6 +57,7 @@ CREATE TABLE pcs (
     total_assigned_time INT NOT NULL DEFAULT 0,
     client_name VARCHAR(100),
     current_session_id VARCHAR(50),
+    tuya_device_id VARCHAR(100),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
