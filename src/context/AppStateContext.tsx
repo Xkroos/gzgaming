@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 // -------------------------------------------------------------
 // TYPES & INTERFACES
@@ -26,6 +26,7 @@ export interface User {
   role: UserRole;
   status: 'Activo' | 'Inactivo';
   createdAt: string;
+  token?: string;
 }
 
 export interface PC {
@@ -173,7 +174,7 @@ interface AppStateContextType {
   isBcvLoading: boolean;
   
   // Auth simulation
-  loginUser: (username: string, password?: string) => Promise<boolean>;
+  loginUser: (username: string, password?: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   logoutUser: () => void;
   
   // BCV Rate
@@ -199,9 +200,9 @@ interface AppStateContextType {
   closeShift: (details: { notes: string }) => Promise<ShiftClosing | null>;
   
   // Staff CRUD
-  addUser: (username: string, fullName: string, role: UserRole, password?: string) => void;
-  updateUser: (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => void;
-  deleteUser: (id: string) => void;
+  addUser: (username: string, fullName: string, role: UserRole, password?: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  updateUser: (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  deleteUser: (id: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   
   // Inventory
   restockProduct: (id: string, amount: number, reason: string) => void;
@@ -249,7 +250,14 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // 2. Active Session User
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('gz_current_user');
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      const u = JSON.parse(saved);
+      if (!u || !u.token) return null;
+      return u;
+    } catch {
+      return null;
+    }
   });
 
   const [users, setUsers] = useState<User[]>([]);
@@ -270,12 +278,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   const writeLog = async (action: string, details: string, status: 'Éxito' | 'Fallo' | 'Advertencia' = 'Éxito') => {
     try {
-      const res = await fetch(apiUrl('/api/audit-logs'), {
+      const res = await apiFetch('/api/audit-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: currentUser?.fullName || 'System',
-          role: currentUser?.role || 'System',
           action,
           details,
           status
@@ -316,17 +322,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           writeLog('BCV_SYNC', `Sincronización de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const err = e as { message?: string };
       console.warn("Falla al conectar a dolarapi. Usando tasa alternativa.", e);
-      writeLog('BCV_SYNC', `Fallo al sincronizar tasa BCV: ${e.message || 'Error de red'}. Usando tasa de respaldo.`, 'Advertencia');
+      writeLog('BCV_SYNC', `Fallo al sincronizar tasa BCV: ${err.message || 'Error de red'}. Usando tasa de respaldo.`, 'Advertencia');
     } finally {
       setIsBcvLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchBcvRate(false);
-    const interval = setInterval(() => fetchBcvRate(false), 3600000);
+    void fetchBcvRate(false);
+    const interval = setInterval(() => void fetchBcvRate(false), 3600000);
     return () => clearInterval(interval);
   }, []);
 
@@ -341,21 +348,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // FETCH ALL DATA FROM DATABASE PERIODICALLY
   // -------------------------------------------------------------
   const fetchAllData = async () => {
+    if (!currentUser) return;
     try {
-      const endpoints = {
-        users: apiUrl('/api/users'),
-        consoleTypes: apiUrl('/api/console-types'),
-        pcs: apiUrl('/api/pcs'),
-        plans: apiUrl('/api/plans'),
-        offers: apiUrl('/api/offers'),
-        payments: apiUrl('/api/payments'),
-        inventory: apiUrl('/api/inventory'),
-        inventoryLogs: apiUrl('/api/inventory-logs'),
-        shiftClosings: apiUrl('/api/shift-closings'),
-        credentials: apiUrl('/api/credentials'),
-        auditLogs: apiUrl('/api/audit-logs'),
-      };
-
       const [
         usersRes,
         consoleTypesRes,
@@ -369,17 +363,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         credentialsRes,
         auditLogsRes
       ] = await Promise.all([
-        fetch(endpoints.users).then(r => r.json()),
-        fetch(endpoints.consoleTypes).then(r => r.json()),
-        fetch(endpoints.pcs).then(r => r.json()),
-        fetch(endpoints.plans).then(r => r.json()),
-        fetch(endpoints.offers).then(r => r.json()),
-        fetch(endpoints.payments).then(r => r.json()),
-        fetch(endpoints.inventory).then(r => r.json()),
-        fetch(endpoints.inventoryLogs).then(r => r.json()),
-        fetch(endpoints.shiftClosings).then(r => r.json()),
-        fetch(endpoints.credentials).then(r => r.json()),
-        fetch(endpoints.auditLogs).then(r => r.json()),
+        apiFetch('/api/users').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/console-types').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/pcs').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/plans').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/offers').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/payments').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/inventory').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/inventory-logs').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/shift-closings').then(r => r.ok ? r.json() : []),
+        apiFetch('/api/credentials').then(r => r.ok ? r.json() : []),
+        currentUser.role === 'Admin' ? apiFetch('/api/audit-logs').then(r => r.ok ? r.json() : []) : Promise.resolve([]),
       ]);
 
       if (Array.isArray(usersRes)) setUsers(usersRes);
@@ -399,10 +393,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const fetchDynamicData = async () => {
+    if (!currentUser) return;
     try {
       const [pcsRes, paymentsRes] = await Promise.all([
-        fetch(apiUrl('/api/pcs')).then(r => r.json()),
-        fetch(apiUrl('/api/payments')).then(r => r.json())
+        apiFetch('/api/pcs').then(r => r.ok ? r.json() : null),
+        apiFetch('/api/payments').then(r => r.ok ? r.json() : null)
       ]);
       if (Array.isArray(pcsRes)) setPcs(pcsRes);
       if (Array.isArray(paymentsRes)) setPayments(paymentsRes);
@@ -412,7 +407,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   useEffect(() => {
-    fetchAllData();
+    if (!currentUser) return;
+    void fetchAllData();
     const interval = setInterval(fetchDynamicData, 5000);
     return () => clearInterval(interval);
   }, [currentUser]);
@@ -452,25 +448,29 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   // REAL AUTHENTICATION
   // -------------------------------------------------------------
-  const loginUser = async (username: string, password?: string): Promise<boolean> => {
+  const loginUser = async (username: string, password?: string): Promise<{ success: boolean; user?: User; error?: string }> => {
     try {
-      const res = await fetch(apiUrl('/api/auth/login'), {
+      const res = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username: username.trim(), password })
       });
       if (res.ok) {
         const user = await res.json();
         setCurrentUser(user);
         localStorage.setItem('gz_current_user', JSON.stringify(user));
         writeLog('LOGIN', `Inicio de sesión exitoso como ${user.fullName} (${user.role})`, 'Éxito');
-        return true;
+        return { success: true, user };
       }
-    } catch (e) {
+      const err = await res.json().catch(() => ({}));
+      writeLog('LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
+      return { success: false, error: err.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.' };
+    } catch (e: unknown) {
+      const err = e as { message?: string };
       console.error("Login request failed:", e);
+      writeLog('LOGIN_FAIL', `Fallo de conexión al iniciar sesión para: ${username}`, 'Fallo');
+      return { success: false, error: err?.message || 'Error de conexión con el servidor. Verifica que el backend esté corriendo.' };
     }
-    writeLog('LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
-    return false;
   };
 
   const logoutUser = () => {
@@ -488,7 +488,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const seconds = durationMinutes * 60;
     const pc = pcs.find(p => p.id === pcId);
     if (!pc) return;
-    let hourlyRate = pc.hourlyRate;
+    const hourlyRate = pc.hourlyRate;
     let finalPrice = (durationMinutes / 60) * hourlyRate;
     let offerDesc = '';
 
@@ -496,7 +496,6 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const plan = plans.find(p => p.id === planId);
       if (plan) {
         finalPrice = plan.priceUsd;
-        hourlyRate = (plan.priceUsd / plan.durationMinutes) * 60;
       }
     }
 
@@ -511,7 +510,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const sessionId = `sess-${Date.now()}`;
 
     try {
-      await fetch(apiUrl(`/api/pcs/${pcId}`), {
+      await apiFetch(`/api/pcs/${pcId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -532,7 +531,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const releasePC = async (pcId: string) => {
     try {
-      await fetch(apiUrl(`/api/pcs/${pcId}`), {
+      await apiFetch(`/api/pcs/${pcId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -552,7 +551,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const pausePC = async (pcId: string) => {
     try {
-      await fetch(apiUrl(`/api/pcs/${pcId}`), {
+      await apiFetch(`/api/pcs/${pcId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'Suspendida' })
@@ -566,7 +565,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const resumePC = async (pcId: string) => {
     try {
-      await fetch(apiUrl(`/api/pcs/${pcId}`), {
+      await apiFetch(`/api/pcs/${pcId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: 'En Uso' })
@@ -583,7 +582,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!pc) return;
     const additionalSeconds = additionalMinutes * 60;
     try {
-      await fetch(apiUrl(`/api/pcs/${pcId}`), {
+      await apiFetch(`/api/pcs/${pcId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -602,7 +601,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addPC = async (pcData: Omit<PC, 'id' | 'status' | 'remainingTime' | 'totalAssignedTime'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/pcs/create'), {
+      const res = await apiFetch('/api/pcs/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -619,6 +618,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const newPC = await res.json();
         writeLog('PC_CREATE', `Equipo creado: ${newPC.id} (${newPC.pcName}) - IP: ${newPC.ipAddress}`, 'Éxito');
         fetchAllData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error al crear equipo: ${err.error || res.statusText}`);
       }
     } catch (e) {
       console.error(e);
@@ -628,7 +630,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updatePC = async (id: string, updatedFields: Partial<PC>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(apiUrl(`/api/pcs/${id}`), {
+      await apiFetch(`/api/pcs/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -643,7 +645,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deletePC = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(apiUrl(`/api/pcs/${id}`), {
+      await apiFetch(`/api/pcs/${id}`, {
         method: 'DELETE'
       });
       writeLog('PC_DELETE', `Equipo eliminado: ${id}`, 'Éxito');
@@ -659,17 +661,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const registerPayment = async (paymentData: Omit<Payment, 'id' | 'operatorId' | 'operatorName' | 'status' | 'createdAt'>) => {
     if (!currentUser) return;
     try {
-      const res = await fetch(apiUrl('/api/payments'), {
+      const res = await apiFetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...paymentData,
-          operatorId: currentUser.id
-        })
+        body: JSON.stringify(paymentData)
       });
       if (res.ok) {
         writeLog('PAYMENT_REGISTER', `Pago registrado por ${currentUser.fullName}: $${paymentData.amountUsd.toFixed(2)} (${paymentData.amountVes.toFixed(2)} VES) via ${paymentData.paymentMethod}`, 'Éxito');
         fetchAllData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error al registrar pago: ${err.error || res.statusText}`);
       }
     } catch (e) {
       console.error(e);
@@ -679,10 +681,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const validatePayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(apiUrl(`/api/payments/${paymentId}/validate`), {
+      await apiFetch(`/api/payments/${paymentId}/validate`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ validatorId: currentUser.id })
       });
       writeLog('PAYMENT_VALIDATE', `Administrador ${currentUser.fullName} validó el pago ${paymentId}`, 'Éxito');
       fetchAllData();
@@ -694,10 +695,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const rejectPayment = async (paymentId: string) => {
     if (!currentUser || currentUser.role !== 'Admin') return;
     try {
-      await fetch(apiUrl(`/api/payments/${paymentId}/reject`), {
+      await apiFetch(`/api/payments/${paymentId}/reject`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ validatorId: currentUser.id })
       });
       writeLog('PAYMENT_REJECT', `Administrador ${currentUser.fullName} rechazó el pago ${paymentId}`, 'Advertencia');
       fetchAllData();
@@ -744,10 +744,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .filter(p => p.paymentMethod === 'Transferencia')
       .reduce((sum, p) => sum + p.amountVes, 0);
 
-    const totalTimeMinutes = operatorPayments.length * 60; 
+    const totalTimeMinutes = operatorPayments.length * 60;
 
     const bodyData = {
-      operatorId: currentUser.id,
       startTime: new Date(new Date().setHours(8, 0, 0, 0)).toISOString(),
       totalUsdGenerated,
       totalVesGenerated,
@@ -764,7 +763,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     try {
-      const res = await fetch(apiUrl('/api/shift-closings'), {
+      const res = await apiFetch('/api/shift-closings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(bodyData)
@@ -784,58 +783,87 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // -------------------------------------------------------------
   // STAFF MANAGEMENT (CRUD)
   // -------------------------------------------------------------
-  const addUser = async (username: string, fullName: string, role: UserRole, password?: string) => {
-    if (!currentUser || currentUser.role !== 'Admin') return;
+  const addUser = async (username: string, fullName: string, role: UserRole, password?: string): Promise<{ success: boolean; user?: User; error?: string }> => {
+    if (!currentUser || currentUser.role !== 'Admin') {
+      return { success: false, error: 'Acceso no autorizado' };
+    }
     try {
-      const res = await fetch(apiUrl('/api/users'), {
+      const res = await apiFetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, fullName, role, password })
+        body: JSON.stringify({ username: username.trim(), fullName: fullName.trim(), role, password })
       });
       if (res.ok) {
-        writeLog('USER_CREATE', `Usuario creado: ${fullName} con rol ${role}`, 'Éxito');
+        const newUser: User = await res.json();
+        setUsers(prev => [newUser, ...prev]);
+        writeLog('USER_CREATE', `Usuario creado: ${fullName} (@${username.trim()}) con rol ${role}`, 'Éxito');
         fetchAllData();
+        return { success: true, user: newUser };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.error || res.statusText || 'Error al crear usuario';
+        return { success: false, error: errMsg };
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      console.error("addUser error:", e);
+      return { success: false, error: err?.message || 'Error de conexión al servidor' };
     }
   };
 
-  const updateUser = async (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string) => {
-    if (!currentUser || currentUser.role !== 'Admin') return;
+  const updateUser = async (id: string, fullName: string, role: UserRole, status: 'Activo' | 'Inactivo', password?: string): Promise<{ success: boolean; user?: User; error?: string }> => {
+    if (!currentUser || currentUser.role !== 'Admin') {
+      return { success: false, error: 'Acceso no autorizado' };
+    }
     try {
-      const res = await fetch(apiUrl(`/api/users/${id}`), {
+      const res = await apiFetch(`/api/users/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, role, status, password })
+        body: JSON.stringify({ fullName: fullName.trim(), role, status, password })
       });
       if (res.ok) {
+        const updatedUser: User = await res.json();
+        setUsers(prev => prev.map(u => u.id === id ? { ...u, ...updatedUser } : u));
         writeLog('USER_UPDATE', `Usuario actualizado: ${fullName} (Rol: ${role}, Estado: ${status})`, 'Éxito');
         fetchAllData();
+        return { success: true, user: updatedUser };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        const errMsg = err.error || res.statusText || 'Error al actualizar usuario';
+        return { success: false, error: errMsg };
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      console.error("updateUser error:", e);
+      return { success: false, error: err?.message || 'Error de conexión al servidor' };
     }
   };
 
-  const deleteUser = async (id: string) => {
-    if (!currentUser || currentUser.role !== 'Admin') return;
+  const deleteUser = async (id: string): Promise<{ success: boolean; message?: string; error?: string }> => {
+    if (!currentUser || currentUser.role !== 'Admin') {
+      return { success: false, error: 'Acceso no autorizado' };
+    }
     try {
-      const res = await fetch(apiUrl(`/api/users/${id}`), {
+      const res = await apiFetch(`/api/users/${id}`, {
         method: 'DELETE'
       });
       const data = await res.json();
       
       if (data.deleted) {
-        alert('Usuario eliminado permanentemente.');
+        setUsers(prev => prev.filter(u => u.id !== id));
         writeLog('USER_DELETE', `Usuario eliminado permanentemente ID: ${id}`, 'Éxito');
+        fetchAllData();
+        return { success: true, message: 'Usuario eliminado permanentemente.' };
       } else {
-        alert('ADVERTENCIA: ' + (data.message || 'El usuario no puede ser eliminado y fue marcado como Inactivo.'));
+        setUsers(prev => prev.map(u => u.id === id ? { ...u, status: 'Inactivo' } : u));
         writeLog('USER_DELETE', `Usuario inhabilitado ID: ${id}`, 'Éxito');
+        fetchAllData();
+        return { success: true, message: data.message || 'El usuario tiene historial financiero y ha sido marcado como Inactivo.' };
       }
-      fetchAllData();
-    } catch (e) {
-      console.error(e);
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      console.error("deleteUser error:", e);
+      return { success: false, error: err?.message || 'Error de conexión al servidor' };
     }
   };
 
@@ -848,24 +876,21 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!item) return;
     
     try {
-      await fetch(apiUrl('/api/inventory-logs'), {
+      const res = await apiFetch('/api/inventory-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: id,
           changeAmount: amount,
           reason,
-          userName: currentUser.fullName
         })
       });
 
-      await fetch(apiUrl(`/api/inventory/${id}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stock: item.stock + amount
-        })
-      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error al reabastecer: ${err.error || res.statusText}`);
+        return;
+      }
 
       writeLog('INV_RESTOCK', `Producto reabastecido: ${item.name} (+${amount} unidades). Motivo: ${reason}`, 'Éxito');
       fetchAllData();
@@ -885,26 +910,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!currentUser) return;
     const item = inventory.find(i => i.id === id);
     if (!item) return;
+
+    if (item.stock < amount) {
+      alert(`Stock insuficiente para "${item.name}". Stock disponible: ${item.stock}`);
+      return;
+    }
     
     try {
-      await fetch(apiUrl('/api/inventory-logs'), {
+      const res = await apiFetch('/api/inventory-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           productId: id,
           changeAmount: -amount,
           reason: 'Venta Directa',
-          userName: currentUser.fullName
         })
       });
 
-      await fetch(apiUrl(`/api/inventory/${id}`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stock: Math.max(0, item.stock - amount)
-        })
-      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error en venta: ${err.error || 'Stock insuficiente'}`);
+        return;
+      }
 
       const totalCostUsd = item.priceUsd * amount;
       const totalCostVes = totalCostUsd * bcvRate;
@@ -931,7 +958,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addProduct = async (productData: Omit<InventoryItem, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/inventory'), {
+      const res = await apiFetch('/api/inventory', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(productData)
@@ -940,6 +967,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const newItem = await res.json();
         writeLog('INV_CREATE', `Nuevo producto en inventario: ${newItem.name} (Compra: $${newItem.purchasePrice.toFixed(2)}, Venta: $${newItem.priceUsd.toFixed(2)})`, 'Éxito');
         fetchAllData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(`Error al agregar producto: ${err.error || res.statusText}`);
       }
     } catch (error) {
       console.error('Error adding product:', error);
@@ -948,7 +978,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteProduct = async (id: string) => {
     try {
-      const res = await fetch(apiUrl(`/api/inventory/${id}`), { method: 'DELETE' });
+      const res = await apiFetch(`/api/inventory/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setInventory(prev => prev.filter(i => i.id !== id));
       }
@@ -963,7 +993,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addPlan = async (planData: Omit<Plan, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/plans'), {
+      const res = await apiFetch('/api/plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(planData)
@@ -981,7 +1011,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updatePlan = async (id: string, updatedFields: Partial<Plan>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl(`/api/plans/${id}`), {
+      const res = await apiFetch(`/api/plans/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -999,7 +1029,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addOffer = async (offerData: Omit<Offer, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/offers'), {
+      const res = await apiFetch('/api/offers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(offerData)
@@ -1017,7 +1047,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateOffer = async (id: string, updatedFields: Partial<Offer>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl(`/api/offers/${id}`), {
+      const res = await apiFetch(`/api/offers/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -1038,7 +1068,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addCredential = async (credData: Omit<Credential, 'id'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/credentials'), {
+      const res = await apiFetch('/api/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credData)
@@ -1056,7 +1086,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteCredential = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(apiUrl(`/api/credentials/${id}`), {
+      await apiFetch(`/api/credentials/${id}`, {
         method: 'DELETE'
       });
       writeLog('CRED_DELETE', `Credencial eliminada ID: ${id}`, 'Éxito');
@@ -1072,7 +1102,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addConsoleType = async (ctData: Omit<ConsoleType, 'id' | 'isActive'>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl('/api/console-types'), {
+      const res = await apiFetch('/api/console-types', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(ctData)
@@ -1090,7 +1120,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const updateConsoleType = async (id: string, updatedFields: Partial<ConsoleType>) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      const res = await fetch(apiUrl(`/api/console-types/${id}`), {
+      const res = await apiFetch(`/api/console-types/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedFields)
@@ -1108,7 +1138,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const deleteConsoleType = async (id: string) => {
     if (!currentUser || currentUser.role === 'Operador') return;
     try {
-      await fetch(apiUrl(`/api/console-types/${id}`), {
+      await apiFetch(`/api/console-types/${id}`, {
         method: 'DELETE'
       });
       writeLog('CONSOLE_TYPE_DELETE', `Tipo de consola inhabilitado ID: ${id}`, 'Éxito');

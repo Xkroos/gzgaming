@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import type { User, UserRole } from '../context/AppStateContext';
+import { useToast } from '../components/ToastNotification';
 import { 
   Users, UserPlus, Trash2, Edit2, AlertTriangle
 } from 'lucide-react';
 
 export const Staff: React.FC = () => {
   const { users, addUser, updateUser, deleteUser, currentUser } = useAppState();
+  const { toast } = useToast();
 
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -33,22 +35,32 @@ export const Staff: React.FC = () => {
     );
   }
 
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    addUser(username, fullName, role, password);
-    setUsername('');
-    setFullName('');
-    setRole('Operador');
-    setPassword('');
-    setShowAddUser(false);
+    const res = await addUser(username, fullName, role, password);
+    if (res.success) {
+      toast.success('Empleado Registrado', `@${username.trim()} se ha registrado exitosamente.`);
+      setUsername('');
+      setFullName('');
+      setRole('Operador');
+      setPassword('');
+      setShowAddUser(false);
+    } else {
+      toast.error('Error al registrar', res.error || 'No se pudo crear el usuario');
+    }
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
-    updateUser(editingUser.id, editFullName, editRole, editStatus, editPassword || undefined);
-    setEditPassword('');
-    setEditingUser(null);
+    const res = await updateUser(editingUser.id, editFullName, editRole, editStatus, editPassword || undefined);
+    if (res.success) {
+      toast.success('Empleado Actualizado', `Los datos de @${editingUser.username} fueron actualizados.`);
+      setEditPassword('');
+      setEditingUser(null);
+    } else {
+      toast.error('Error al actualizar', res.error || 'No se pudo actualizar el usuario');
+    }
   };
 
   const getRoleBadge = (roleName: UserRole) => {
@@ -120,9 +132,14 @@ export const Staff: React.FC = () => {
                       <button 
                         className="btn btn-danger" 
                         style={{ padding: '6px 10px', fontSize: '0.75rem' }} 
-                        onClick={() => {
+                        onClick={async () => {
                           if (confirm(`¿Estás seguro de eliminar a ${user.fullName}?`)) {
-                            deleteUser(user.id);
+                            const res = await deleteUser(user.id);
+                            if (res.success) {
+                              toast.info('Personal Actualizado', res.message || 'Usuario procesado.');
+                            } else {
+                              toast.error('Error al eliminar', res.error || 'No se pudo eliminar el usuario.');
+                            }
                           }
                         }}
                       >

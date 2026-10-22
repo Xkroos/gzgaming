@@ -23,11 +23,13 @@ export const AuditLogs: React.FC = () => {
 
   // Filter logic
   const filteredLogs = auditLogs.filter(log => {
-    const matchesSearch = log.username.toLowerCase().includes(search.toLowerCase()) || 
-                          log.action.toLowerCase().includes(search.toLowerCase()) ||
-                          log.details.toLowerCase().includes(search.toLowerCase());
+    const s = search.toLowerCase().trim();
+    const matchesSearch = !s ||
+                          (log.username || '').toLowerCase().includes(s) || 
+                          (log.action || '').toLowerCase().includes(s) ||
+                          (log.details || '').toLowerCase().includes(s);
                           
-    const matchesAction = filterAction === 'All' || log.action.startsWith(filterAction);
+    const matchesAction = filterAction === 'All' || (log.action || '').startsWith(filterAction);
     const matchesStatus = filterStatus === 'All' || log.status === filterStatus;
 
     return matchesSearch && matchesAction && matchesStatus;

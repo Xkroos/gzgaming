@@ -18,3 +18,30 @@ export function apiUrl(path: string): string {
   return `${API_BASE_URL}${path}`;
 }
 
+/**
+ * Obtiene el token de autenticación actual desde localStorage.
+ */
+export function getAuthToken(): string | null {
+  try {
+    const saved = localStorage.getItem('gz_current_user');
+    if (!saved) return null;
+    const user = JSON.parse(saved);
+    return user?.token || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Realiza una llamada fetch autenticada agregando automáticamente
+ * el header 'Authorization: Bearer <token>' y prefijando la URL base.
+ */
+export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const url = input.startsWith('http') ? input : apiUrl(input);
+  const token = getAuthToken();
+  const headers = new Headers(init.headers || {});
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...init, headers });
+}

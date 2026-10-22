@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import path from 'path';
+import crypto from 'crypto';
 import { initDatabase, pool } from './db.js';
 import { setTuyaDeviceState } from './tuya.js';
 
@@ -109,21 +110,131 @@ function startGameTimer() {
 }
 
 // ============================================================================
+// AUTENTICACIÓN (token firmado con HMAC-SHA256, sin dependencias externas)
+// ============================================================================
+const AUTH_SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+if (!process.env.AUTH_SECRET) {
+  console.warn('[Auth] AUTH_SECRET no definido en .env. Se generó uno temporal: las sesiones se cerrarán al reiniciar el servidor.');
+}
+const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
+
+function signToken(payload) {
+  const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + TOKEN_TTL_MS })).toString('base64url');
+  const sig = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifyToken(token) {
+  if (!token || typeof token !== 'string') return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac('sha256', AUTH_SECRET).update(body).digest('base64url');
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (!payload.exp || payload.exp < Date.now()) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+// Rutas públicas: login y consulta de estado de una PC (usada por el cliente de escritorio GameZoneClient)
+function isPublicRoute(req) {
+  const p = req.path;
+  if (req.method === 'POST' && (p === '/auth/login' || p === '/api/auth/login')) return true;
+  if (req.method === 'GET' && (/^\/pcs\/[^/]+$/.test(p) || /^\/api\/pcs\/[^/]+$/.test(p))) return true;
+  return false;
+}
+
+app.use('/api', async (req, res, next) => {
+  if (isPublicRoute(req)) return next();
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const payload = verifyToken(token);
+  if (!payload) {
+    return res.status(401).json({ error: 'No autenticado o sesión expirada' });
+  }
+  try {
+    // Se consulta el usuario en cada petición para aplicar al instante cambios de rol o desactivaciones
+    const r = await pool.query('SELECT id, username, full_name, role, status FROM users WHERE id = $1', [payload.id]);
+    const u = r.rows[0];
+    if (!u || u.status !== 'Activo') {
+      return res.status(401).json({ error: 'Usuario inactivo o inexistente' });
+    }
+    req.user = { id: u.id, username: u.username, fullName: u.full_name, role: u.role };
+    next();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+const requireRole = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ error: 'No tienes permisos para realizar esta acción' });
+  }
+  next();
+};
+const adminOnly = requireRole('Admin');
+const managers = requireRole('Admin', 'Encargado');
+
+async function auditLog(user, action, details, status = 'Éxito') {
+  try {
+    await pool.query(
+      `INSERT INTO audit_logs (user_id, username, role, action, details, status) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [user?.id || null, user?.fullName || 'System', user?.role || 'System', action, details, status]
+    );
+  } catch (e) {
+    console.error('[Audit] No se pudo registrar el evento:', e.message);
+  }
+}
+
+// ============================================================================
 // API ROUTES
 // ============================================================================
 
 // 1. AUTH
 app.post('/api/auth/login', async (req, res) => {
-  const { username, password } = req.body;
+  const username = String(req.body.username || '').trim();
+  const password = String(req.body.password || '');
+  if (!username) {
+    return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
+  }
   try {
-    const result = await pool.query('SELECT * FROM users WHERE username = $1 AND status = \'Activo\'', [username]);
+    const result = await pool.query(
+      'SELECT * FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1)) AND LOWER(status) = \'activo\'',
+      [username]
+    );
     if (result.rowCount === 0) {
+      await auditLog(null, 'LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
       return res.status(401).json({ error: 'Usuario no encontrado o inactivo' });
     }
 
     const user = result.rows[0];
-    const passwordMatch = bcrypt.compareSync(password || '', user.password_hash);
+    let passwordMatch = false;
+    try {
+      passwordMatch = bcrypt.compareSync(password, user.password_hash);
+    } catch {
+      passwordMatch = false;
+    }
+
+    // Compatibilidad retroactiva: si la contraseña en base de datos era texto plano
+    // se permite el acceso y se actualiza inmediatamente al hash seguro de bcrypt
+    if (!passwordMatch && (password === user.password_hash || password.trim() === String(user.password_hash).trim())) {
+      passwordMatch = true;
+      try {
+        const upgradeHash = bcrypt.hashSync(password, 10);
+        await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [upgradeHash, user.id]);
+        console.log(`[Auth] Contraseña en texto plano para '${user.username}' actualizada automáticamente a hash bcrypt.`);
+      } catch (err) {
+        console.error('[Auth] Error al actualizar hash de contraseña:', err.message);
+      }
+    }
+
     if (!passwordMatch) {
+      await auditLog(null, 'LOGIN_FAIL', `Contraseña incorrecta para el usuario: ${username}`, 'Fallo');
       return res.status(401).json({ error: 'Contraseña incorrecta' });
     }
 
@@ -133,7 +244,8 @@ app.post('/api/auth/login', async (req, res) => {
       fullName: user.full_name,
       role: user.role,
       status: user.status,
-      createdAt: user.created_at
+      createdAt: user.created_at,
+      token: signToken({ id: user.id })
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -153,10 +265,21 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-app.post('/api/users', async (req, res) => {
-  const { username, fullName, role, password } = req.body;
+app.post('/api/users', adminOnly, async (req, res) => {
+  const { fullName, role, password } = req.body;
+  const username = String(req.body.username || '').trim();
+  if (!username) {
+    return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
+  }
+  if (!password || String(password).length < 4) {
+    return res.status(400).json({ error: 'La contraseña es obligatoria (mínimo 4 caracteres)' });
+  }
   try {
-    const passHash = bcrypt.hashSync(password || username, 10);
+    const dup = await pool.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+    if (dup.rowCount > 0) {
+      return res.status(409).json({ error: 'Ya existe un usuario con ese nombre' });
+    }
+    const passHash = bcrypt.hashSync(String(password), 10);
     const result = await pool.query(`
       INSERT INTO users (username, password_hash, full_name, role, status)
       VALUES ($1, $2, $3, $4, 'Activo')
@@ -168,9 +291,12 @@ app.post('/api/users', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', adminOnly, async (req, res) => {
   const { id } = req.params;
   const { fullName, role, status, password } = req.body;
+  if (id === req.user.id && (role !== 'Admin' || status !== 'Activo')) {
+    return res.status(400).json({ error: 'No puedes quitarte el rol de Administrador ni desactivar tu propia cuenta' });
+  }
   try {
     if (password) {
       const passHash = bcrypt.hashSync(password, 10);
@@ -195,8 +321,11 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', async (req, res) => {
+app.delete('/api/users/:id', adminOnly, async (req, res) => {
   const { id } = req.params;
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
+  }
   try {
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
     res.json({ success: true, deleted: true });
@@ -224,7 +353,7 @@ app.get('/api/console-types', async (req, res) => {
   }
 });
 
-app.post('/api/console-types', async (req, res) => {
+app.post('/api/console-types', managers, async (req, res) => {
   const { name, emoji, hourlyRate } = req.body;
   try {
     const result = await pool.query(`
@@ -238,7 +367,7 @@ app.post('/api/console-types', async (req, res) => {
   }
 });
 
-app.put('/api/console-types/:id', async (req, res) => {
+app.put('/api/console-types/:id', managers, async (req, res) => {
   const { id } = req.params;
   const { name, emoji, hourlyRate, isActive } = req.body;
   try {
@@ -257,7 +386,7 @@ app.put('/api/console-types/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/console-types/:id', async (req, res) => {
+app.delete('/api/console-types/:id', managers, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query(`DELETE FROM console_types WHERE id = $1`, [id]);
@@ -301,7 +430,7 @@ app.get('/api/pcs/:id', async (req, res) => {
 });
 
 // Sincronización Bulk (para el flujo actual del frontend en React)
-app.post('/api/pcs', async (req, res) => {
+app.post('/api/pcs', adminOnly, async (req, res) => {
   const pcsList = req.body;
   if (!Array.isArray(pcsList)) {
     return res.status(400).json({ error: 'El cuerpo debe ser un array de PCs' });
@@ -335,17 +464,23 @@ app.post('/api/pcs', async (req, res) => {
 });
 
 // Crear, actualizar e individualmente borrar PCs
-app.post('/api/pcs/create', async (req, res) => {
+app.post('/api/pcs/create', managers, async (req, res) => {
   const { id, pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId } = req.body;
+  if (!id || !String(id).trim()) {
+    return res.status(400).json({ error: 'El identificador del equipo es obligatorio' });
+  }
   try {
     const result = await pool.query(`
       INSERT INTO pcs (id, pc_name, ip_address, status, hourly_rate, details, console_type_id, remaining_time, total_assigned_time, tuya_device_id)
       VALUES ($1, $2, $3, 'Disponible', $4, $5, $6, 0, 0, $7)
       RETURNING id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
                 details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
-    `, [id.toUpperCase(), pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId]);
+    `, [String(id).trim().toUpperCase(), pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Ya existe un equipo con ese identificador' });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -353,14 +488,27 @@ app.post('/api/pcs/create', async (req, res) => {
 app.put('/api/pcs/:id', async (req, res) => {
   const { id } = req.params;
   const { pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, tuyaDeviceId } = req.body;
+  // Los operadores solo pueden operar sesiones (estado/tiempo/cliente), no editar la configuración del equipo
+  if (req.user.role === 'Operador' &&
+      [pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId].some(v => v !== undefined)) {
+    return res.status(403).json({ error: 'No tienes permisos para modificar la configuración del equipo' });
+  }
   try {
     const currentResult = await pool.query('SELECT status, tuya_device_id FROM pcs WHERE id = $1', [id]);
     const currentPc = currentResult.rows[0];
+    if (!currentPc) {
+      return res.status(404).json({ error: 'PC no encontrada' });
+    }
 
     // Mantenemos tuyaDeviceId si se envía uno nuevo, o dejamos el existente si se envía null explícitamente y queremos borrar, pero lo usual es actualizarlo.
     // Usaremos tuyaDeviceId undefined para ignorar la actualización.
     
-    let queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, id];
+    // clientName / currentSessionId: si vienen explícitamente como null, se limpian (liberar PC);
+    // si no vienen en el body (undefined), se conservan.
+    const clearClient = clientName === null;
+    const clearSession = currentSessionId === null;
+
+    let queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, clearClient, clearSession, id];
     let query = `
       UPDATE pcs 
       SET pc_name = COALESCE($1, pc_name),
@@ -371,15 +519,15 @@ app.put('/api/pcs/:id', async (req, res) => {
           status = COALESCE($6, status),
           remaining_time = COALESCE($7, remaining_time),
           total_assigned_time = COALESCE($8, total_assigned_time),
-          client_name = COALESCE($9, client_name),
-          current_session_id = COALESCE($10, current_session_id)
+          client_name = CASE WHEN $11::boolean THEN NULL ELSE COALESCE($9, client_name) END,
+          current_session_id = CASE WHEN $12::boolean THEN NULL ELSE COALESCE($10, current_session_id) END
     `;
 
     if (tuyaDeviceId !== undefined) {
-      queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, tuyaDeviceId, id];
-      query += `, tuya_device_id = $11 WHERE id = $12`;
+      queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, clearClient, clearSession, tuyaDeviceId, id];
+      query += `, tuya_device_id = $13 WHERE id = $14`;
     } else {
-      query += ` WHERE id = $11`;
+      query += ` WHERE id = $13`;
     }
 
     query += `
@@ -390,6 +538,9 @@ app.put('/api/pcs/:id', async (req, res) => {
 
     const result = await pool.query(query, queryArgs);
     const updatedPc = result.rows[0];
+    if (!updatedPc) {
+      return res.status(404).json({ error: 'PC no encontrada' });
+    }
 
     // Logica de TUYA
     if (currentPc) {
@@ -412,7 +563,7 @@ app.put('/api/pcs/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/pcs/:id', async (req, res) => {
+app.delete('/api/pcs/:id', managers, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query(`DELETE FROM pcs WHERE id = $1`, [id]);
@@ -435,7 +586,7 @@ app.get('/api/plans', async (req, res) => {
   }
 });
 
-app.post('/api/plans', async (req, res) => {
+app.post('/api/plans', managers, async (req, res) => {
   const { name, description, durationMinutes, priceUsd } = req.body;
   try {
     const result = await pool.query(`
@@ -449,7 +600,7 @@ app.post('/api/plans', async (req, res) => {
   }
 });
 
-app.put('/api/plans/:id', async (req, res) => {
+app.put('/api/plans/:id', managers, async (req, res) => {
   const { id } = req.params;
   const { name, description, durationMinutes, priceUsd, isActive } = req.body;
   try {
@@ -482,7 +633,7 @@ app.get('/api/offers', async (req, res) => {
   }
 });
 
-app.post('/api/offers', async (req, res) => {
+app.post('/api/offers', managers, async (req, res) => {
   const { name, description, discountPercentage, dayOfWeek } = req.body;
   try {
     const result = await pool.query(`
@@ -496,7 +647,7 @@ app.post('/api/offers', async (req, res) => {
   }
 });
 
-app.put('/api/offers/:id', async (req, res) => {
+app.put('/api/offers/:id', managers, async (req, res) => {
   const { id } = req.params;
   const { name, description, discountPercentage, dayOfWeek, isActive } = req.body;
   try {
@@ -553,22 +704,10 @@ app.get('/api/payments/:id/receipt', async (req, res) => {
 });
 
 app.post('/api/payments', async (req, res) => {
-  const { sessionId, operatorId, amountUsd, amountVes, bcvRate, paymentMethod, reference, receiptImageUrl, offerApplied } = req.body;
+  const { sessionId, amountUsd, amountVes, bcvRate, paymentMethod, reference, receiptImageUrl, offerApplied } = req.body;
   try {
-    let opId = operatorId;
-    if (opId) {
-      // Verificar si el UUID del operador realmente existe en la base de datos de Supabase
-      const checkOp = await pool.query(`SELECT id FROM users WHERE id = $1`, [opId]);
-      if (checkOp.rowCount === 0) {
-        opId = null; // Si no existe en la base de datos, forzamos el fallback
-      }
-    }
-
-    // Si no tenemos operatorId o el guardado es inválido, asumimos el primero disponible
-    if (!opId) {
-      const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
-      if (opRes.rowCount > 0) opId = opRes.rows[0].id;
-    }
+    // El operador es siempre el usuario autenticado (no se confía en el cuerpo de la petición)
+    const opId = req.user.id;
 
     // El trigger en schema.sql requiere status = 'Pendiente' por defecto al insertar
     const result = await pool.query(`
@@ -596,21 +735,19 @@ app.post('/api/payments', async (req, res) => {
   }
 });
 
-app.put('/api/payments/:id/validate', async (req, res) => {
+app.put('/api/payments/:id/validate', adminOnly, async (req, res) => {
   const { id } = req.params;
-  const { validatorId } = req.body;
   try {
-    let valId = validatorId;
-    if (!valId) {
-      const adminRes = await pool.query(`SELECT id FROM users WHERE role = 'Admin' LIMIT 1`);
-      if (adminRes.rowCount > 0) valId = adminRes.rows[0].id;
-    }
+    const valId = req.user.id;
 
-    await pool.query(`
+    const upd = await pool.query(`
       UPDATE payments 
       SET status = 'Validado', validator_id = $1, validated_at = CURRENT_TIMESTAMP
       WHERE id = $2
     `, [valId, id]);
+    if (upd.rowCount === 0) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
 
     const result = await pool.query(`
       SELECT p.id, p.status, p.validated_at as "validatedAt", u.full_name as "validatorName", p.validator_id as "validatorId"
@@ -624,21 +761,19 @@ app.put('/api/payments/:id/validate', async (req, res) => {
   }
 });
 
-app.put('/api/payments/:id/reject', async (req, res) => {
+app.put('/api/payments/:id/reject', adminOnly, async (req, res) => {
   const { id } = req.params;
-  const { validatorId } = req.body;
   try {
-    let valId = validatorId;
-    if (!valId) {
-      const adminRes = await pool.query(`SELECT id FROM users WHERE role = 'Admin' LIMIT 1`);
-      if (adminRes.rowCount > 0) valId = adminRes.rows[0].id;
-    }
+    const valId = req.user.id;
 
-    await pool.query(`
+    const upd = await pool.query(`
       UPDATE payments 
       SET status = 'Rechazado', validator_id = $1, validated_at = CURRENT_TIMESTAMP
       WHERE id = $2
     `, [valId, id]);
+    if (upd.rowCount === 0) {
+      return res.status(404).json({ error: 'Pago no encontrado' });
+    }
 
     const result = await pool.query(`
       SELECT p.id, p.status, p.validated_at as "validatedAt", u.full_name as "validatorName", p.validator_id as "validatorId"
@@ -665,7 +800,7 @@ app.get('/api/inventory', async (req, res) => {
   }
 });
 
-app.post('/api/inventory', async (req, res) => {
+app.post('/api/inventory', managers, async (req, res) => {
   const { name, description, purchasePrice, priceUsd, stock, minStock, category } = req.body;
   try {
     const result = await pool.query(`
@@ -679,7 +814,7 @@ app.post('/api/inventory', async (req, res) => {
   }
 });
 
-app.put('/api/inventory/:id', async (req, res) => {
+app.put('/api/inventory/:id', managers, async (req, res) => {
   const { id } = req.params;
   const { name, description, purchasePrice, priceUsd, stock, minStock, category } = req.body;
   try {
@@ -701,7 +836,7 @@ app.put('/api/inventory/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/inventory/:id', async (req, res) => {
+app.delete('/api/inventory/:id', managers, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query('DELETE FROM inventory WHERE id = $1', [id]);
@@ -729,23 +864,32 @@ app.get('/api/inventory-logs', async (req, res) => {
 });
 
 app.post('/api/inventory-logs', async (req, res) => {
-  const { productId, changeAmount, reason, userName } = req.body;
+  const { productId, changeAmount, reason } = req.body;
+  const delta = Number(changeAmount);
+  if (!productId || !Number.isFinite(delta) || delta === 0) {
+    return res.status(400).json({ error: 'Producto y cantidad válidos son obligatorios' });
+  }
+  const client = await pool.connect();
   try {
-    // Buscar el user_id a partir del nombre
-    let userId = null;
-    const userRes = await pool.query(`SELECT id FROM users WHERE full_name = $1 LIMIT 1`, [userName]);
-    if (userRes.rowCount > 0) {
-      userId = userRes.rows[0].id;
-    } else {
-      const adminRes = await pool.query(`SELECT id FROM users LIMIT 1`);
-      if (adminRes.rowCount > 0) userId = adminRes.rows[0].id;
+    const userId = req.user.id;
+
+    await client.query('BEGIN');
+    // Ajuste atómico del stock (evita condiciones de carrera entre ventas simultáneas)
+    const stockRes = await client.query(
+      `UPDATE inventory SET stock = stock + $1 WHERE id = $2 AND stock + $1 >= 0 RETURNING stock`,
+      [delta, productId]
+    );
+    if (stockRes.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Stock insuficiente o producto inexistente' });
     }
 
-    const result = await pool.query(`
+    const result = await client.query(`
       INSERT INTO inventory_logs (product_id, user_id, change_amount, reason)
       VALUES ($1, $2, $3, $4)
       RETURNING id, product_id as "productId", change_amount as "changeAmount", reason, created_at as "createdAt"
-    `, [productId, userId, changeAmount, reason]);
+    `, [productId, userId, delta, reason]);
+    await client.query('COMMIT');
 
     // Obtener nombres para retornar al frontend
     const details = await pool.query(`
@@ -783,21 +927,11 @@ app.get('/api/shift-closings', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+// 9. SHIFT CLOSINGS
 app.post('/api/shift-closings', async (req, res) => {
-  const { operatorId, startTime, endTime, totalUsdGenerated, totalVesGenerated, totalTimeMinutes, details } = req.body;
+  const { startTime, endTime, totalUsdGenerated, totalVesGenerated, totalTimeMinutes, details } = req.body;
   try {
-    let opId = operatorId;
-    if (opId) {
-      const checkOp = await pool.query(`SELECT id FROM users WHERE id = $1`, [opId]);
-      if (checkOp.rowCount === 0) {
-        opId = null;
-      }
-    }
-
-    if (!opId) {
-      const opRes = await pool.query(`SELECT id FROM users LIMIT 1`);
-      if (opRes.rowCount > 0) opId = opRes.rows[0].id;
-    }
+    const opId = req.user.id;
 
     const result = await pool.query(`
       INSERT INTO shift_closings (operator_id, start_time, end_time, total_usd_generated, total_ves_generated, total_time_minutes, details)
@@ -805,7 +939,7 @@ app.post('/api/shift-closings', async (req, res) => {
       RETURNING id, operator_id as "operatorId", start_time as "startTime", end_time as "endTime", 
                 total_usd_generated as "totalUsdGenerated", total_ves_generated as "totalVesGenerated", 
                 total_time_minutes as "totalTimeMinutes", details, created_at as "createdAt"
-    `, [opId, startTime, endTime || new Date(), totalUsdGenerated, totalVesGenerated, totalTimeMinutes, JSON.stringify(details)]);
+    `, [opId, startTime || new Date(), endTime || new Date(), totalUsdGenerated || 0, totalVesGenerated || 0, totalTimeMinutes || 0, JSON.stringify(details || {})]);
 
     const detailsWithNames = await pool.query(`
       SELECT sc.*, u.full_name as "operatorName"
@@ -814,15 +948,12 @@ app.post('/api/shift-closings', async (req, res) => {
       WHERE sc.id = $1
     `, [result.rows[0].id]);
 
-    console.log('[DEBUG] Created shift closing. opId:', opId, 'result ID:', result.rows[0].id);
-
     // Update all Pendiente payments for this operator to Revision
-    const updateRes = await pool.query(`
+    await pool.query(`
       UPDATE payments
       SET status = 'Revision'
       WHERE operator_id = $1 AND status = 'Pendiente'
     `, [opId]);
-    console.log('[DEBUG] Update payments result. rowCount:', updateRes.rowCount);
 
     res.status(201).json({
       ...result.rows[0],
@@ -840,13 +971,20 @@ app.get('/api/credentials', async (req, res) => {
       SELECT id, entity_name as "entityName", login_username as "loginUsername", login_password as "loginPassword", category, notes
       FROM credentials ORDER BY entity_name ASC
     `);
-    res.json(result.rows);
+    // Enmascarar credenciales si el rol es Operador para evitar fuga de contraseñas por red
+    const isOperator = req.user && req.user.role === 'Operador';
+    const rows = result.rows.map(r => ({
+      ...r,
+      loginUsername: isOperator ? '••••••••' : r.loginUsername,
+      loginPassword: isOperator ? '••••••••' : r.loginPassword,
+    }));
+    res.json(rows);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/credentials', async (req, res) => {
+app.post('/api/credentials', managers, async (req, res) => {
   const { entityName, loginUsername, loginPassword, category, notes } = req.body;
   try {
     const result = await pool.query(`
@@ -860,7 +998,7 @@ app.post('/api/credentials', async (req, res) => {
   }
 });
 
-app.delete('/api/credentials/:id', async (req, res) => {
+app.delete('/api/credentials/:id', managers, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query(`DELETE FROM credentials WHERE id = $1`, [id]);
@@ -871,7 +1009,7 @@ app.delete('/api/credentials/:id', async (req, res) => {
 });
 
 // 11. AUDIT LOGS
-app.get('/api/audit-logs', async (req, res) => {
+app.get('/api/audit-logs', adminOnly, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT id, user_id as "userId", username, role, action, details, status, created_at as "createdAt"
@@ -884,20 +1022,17 @@ app.get('/api/audit-logs', async (req, res) => {
 });
 
 app.post('/api/audit-logs', async (req, res) => {
-  const { username, role, action, details, status } = req.body;
+  const { action, details, status } = req.body;
   try {
-    // Buscar user_id opcional por nombre
-    let userId = null;
-    if (username && username !== 'System') {
-      const userRes = await pool.query(`SELECT id FROM users WHERE full_name = $1 LIMIT 1`, [username]);
-      if (userRes.rowCount > 0) userId = userRes.rows[0].id;
-    }
+    const userId = req.user?.id || null;
+    const username = req.user?.fullName || req.body.username || 'System';
+    const role = req.user?.role || req.body.role || 'System';
 
     const result = await pool.query(`
       INSERT INTO audit_logs (user_id, username, role, action, details, status)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id, user_id as "userId", username, role, action, details, status, created_at as "createdAt"
-    `, [userId, username || 'System', role || 'System', action, details, status || 'Éxito']);
+    `, [userId, username, role, action, details, status || 'Éxito']);
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });

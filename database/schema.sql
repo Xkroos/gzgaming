@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TYPE user_role AS ENUM ('Admin', 'Encargado', 'Operador');
 CREATE TYPE pc_status AS ENUM ('Disponible', 'En Uso', 'Bloqueada', 'Suspendida');
 CREATE TYPE session_status AS ENUM ('Activa', 'Completada', 'Bloqueada');
-CREATE TYPE payment_status AS ENUM ('Pendiente', 'Validado', 'Rechazado');
+CREATE TYPE payment_status AS ENUM ('Pendiente', 'Validado', 'Rechazado', 'Revision');
 CREATE TYPE payment_method AS ENUM ('Pago Móvil', 'Efectivo $', 'Efectivo Bs.', 'Transferencia', 'Punto de Venta');
 CREATE TYPE credential_category AS ENUM ('PC Login', 'Steam', 'Epic Games', 'Riot Games', 'Otros');
 

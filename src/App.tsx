@@ -20,7 +20,7 @@ import './styles/app.css';
 type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'console-types';
 
 const MainAppContent: React.FC = () => {
-  const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, isBcvLoading, pcs, payments, users, consoleTypes } = useAppState();
+  const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, isBcvLoading, pcs, payments, consoleTypes } = useAppState();
   const { toast } = useToast();
   const [activeView, setActiveView] = useState<ViewType>('pc-console');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -48,7 +48,7 @@ const MainAppContent: React.FC = () => {
         }
       });
     }
-  }, [pcs]);
+  }, [pcs, toast]);
 
   // Close sidebar when navigating on mobile
   const handleNavClick = (view: ViewType) => {
@@ -65,21 +65,16 @@ const MainAppContent: React.FC = () => {
   // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await loginUser(loginUsername, loginPassword);
-    if (!success) {
-      setLoginError('Usuario o contraseña incorrectos, o cuenta inactiva.');
+    const result = await loginUser(loginUsername, loginPassword);
+    if (!result.success || !result.user) {
+      setLoginError(result.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.');
     } else {
       setLoginError('');
-      const loggedUser = users.find(u => u.username.toLowerCase() === loginUsername.toLowerCase());
-      if (loggedUser) {
-        toast.success('Sesión iniciada', `Bienvenido, ${loggedUser.fullName}.`);
-        if (loggedUser.role === 'Operador' || loggedUser.role === 'Encargado') {
-          setActiveView('pc-console');
-        } else {
-          setActiveView('dashboard');
-        }
+      const loggedUser = result.user;
+      toast.success('Sesión iniciada', `Bienvenido, ${loggedUser.fullName}.`);
+      if (loggedUser.role === 'Admin') {
+        setActiveView('dashboard');
       } else {
-        toast.success('Sesión iniciada', `Bienvenido.`);
         setActiveView('pc-console');
       }
       setLoginUsername('');

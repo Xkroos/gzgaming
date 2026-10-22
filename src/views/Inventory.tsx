@@ -598,7 +598,7 @@ export const Inventory: React.FC = () => {
                     className="form-select"
                     style={{ width: '180px', padding: '6px 12px' }}
                     value={logsTypeFilter}
-                    onChange={e => setLogsTypeFilter(e.target.value as any)}
+                    onChange={e => setLogsTypeFilter(e.target.value as 'All' | 'Restock' | 'Sale')}
                   >
                     <option value="All">Todos los movimientos</option>
                     <option value="Restock">Recargas / Entradas (+)</option>

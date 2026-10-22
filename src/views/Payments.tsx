@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { apiUrl } from '../lib/api';
+import React, { useState, useMemo, useCallback } from 'react';
+import { apiFetch } from '../lib/api';
 import { useAppState } from '../context/AppStateContext';
 import type { Payment, PaymentMethod, ShiftClosing } from '../context/AppStateContext';
 import { useToast } from '../components/ToastNotification';
@@ -55,7 +55,7 @@ export const Payments: React.FC = () => {
   // CLOSE SHIFT STATES
   // ─────────────────────────────────────────
   const [shiftNotes, setShiftNotes] = useState('');
-  const [generatedClosingReport, setGeneratedClosingReport] = useState<any>(null);
+  const [generatedClosingReport, setGeneratedClosingReport] = useState<ShiftClosing | null>(null);
 
   const closeReceiptModal = () => {
     setActiveReceiptPayment(null);
@@ -98,7 +98,7 @@ export const Payments: React.FC = () => {
     }
   };
 
-  const applyPeriodFilter = (pDateObj: Date) => {
+  const applyPeriodFilter = useCallback((pDateObj: Date) => {
     const now = new Date();
     if (filterPeriod === 'Today') {
       return pDateObj.toDateString() === now.toDateString();
@@ -115,7 +115,7 @@ export const Payments: React.FC = () => {
       return pDateObj.getFullYear() === now.getFullYear();
     }
     return true; // 'All'
-  };
+  }, [filterPeriod]);
 
   // ─────────────────────────────────────────
   // FILTERED DATA (memoized)
@@ -151,16 +151,16 @@ export const Payments: React.FC = () => {
       const q = searchQuery.toLowerCase().trim();
       if (q) {
         const matchesSearch =
-          p.operatorName.toLowerCase().includes(q) ||
-          p.id.toLowerCase().includes(q) ||
-          (p.reference && p.reference.toLowerCase().includes(q)) ||
-          (p.offerApplied && p.offerApplied.toLowerCase().includes(q));
+          (p.operatorName || '').toLowerCase().includes(q) ||
+          (p.id || '').toLowerCase().includes(q) ||
+          (p.reference ? p.reference.toLowerCase().includes(q) : false) ||
+          (p.offerApplied ? p.offerApplied.toLowerCase().includes(q) : false);
         if (!matchesSearch) return false;
       }
 
       return true;
     });
-  }, [payments, filterPeriod, filterMethod, filterOperator, searchQuery, currentUser]);
+  }, [payments, applyPeriodFilter, filterMethod, filterOperator, searchQuery, currentUser]);
 
   // Tab-specific payment lists
   const activePayments = useMemo(() => {
@@ -202,7 +202,7 @@ export const Payments: React.FC = () => {
       if (filterOperator !== 'All' && sc.operatorId !== filterOperator) return false;
       return true;
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [shiftClosings, filterPeriod, filterOperator]);
+  }, [shiftClosings, applyPeriodFilter, filterOperator]);
 
   // ─────────────────────────────────────────
   // GET OPERATOR LIST (for filter)
@@ -322,7 +322,7 @@ export const Payments: React.FC = () => {
     const totalUsd = list.filter(p => p.status === 'Validado').reduce((sum, p) => sum + p.amountUsd, 0);
     const totalVes = list.filter(p => p.status === 'Validado').reduce((sum, p) => sum + p.amountVes, 0);
 
-    let rowsHtml = list.map(p => `
+    const rowsHtml = list.map(p => `
       <tr>
         <td>${new Date(p.createdAt).toLocaleDateString('es-VE')} ${new Date(p.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
         <td><strong>${p.offerApplied || 'Cobro de Juego'}</strong><br><small>ID: ${p.id}</small>${p.reference ? `<br><small><strong>Ref:</strong> ${p.reference}</small>` : ''}</td>
@@ -523,7 +523,7 @@ export const Payments: React.FC = () => {
               setActiveReceiptPayment(pay);
               setActiveReceiptUrl('');
               try {
-                const res = await fetch(apiUrl(`/api/payments/${pay.id}/receipt`));
+                const res = await apiFetch(`/api/payments/${pay.id}/receipt`);
                 if (res.ok) {
                   const data = await res.json();
                   setActiveReceiptUrl(base64ToBlobUrl(data.receiptImageUrl));

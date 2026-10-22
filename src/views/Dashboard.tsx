@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAppState } from '../context/AppStateContext';
+import type { ShiftClosing } from '../context/AppStateContext';
 import { 
   TrendingUp, DollarSign, Clock, AlertTriangle, CheckCircle, 
   Printer, FileText, Landmark 
@@ -92,7 +93,7 @@ export const Dashboard: React.FC = () => {
 
   const COLORS = ['#8a2be2', '#00f0ff', '#39ff14', '#ffcc00', '#ff3366'];
 
-  const printShiftReport = (closing: any) => {
+  const printShiftReport = (closing: ShiftClosing) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
     printWindow.document.write(`
@@ -123,21 +124,21 @@ export const Dashboard: React.FC = () => {
             <h2>Resumen Contable Generado</h2>
             <div class="grid">
               <div>
-                <p><strong>Total Generado ($):</strong> $${closing.totalUsdGenerated.toFixed(2)}</p>
-                <p><strong>Total Generado (Bs.):</strong> ${closing.totalVesGenerated.toFixed(2)} Bs.</p>
-                <p><strong>Tiempo de Juego Total:</strong> ${closing.totalTimeMinutes} minutos</p>
-                <p><strong>Cantidad Transacciones:</strong> ${closing.details.paymentsCount}</p>
+                <p><strong>Total Generado ($):</strong> $${(closing.totalUsdGenerated ?? 0).toFixed(2)}</p>
+                <p><strong>Total Generado (Bs.):</strong> ${(closing.totalVesGenerated ?? 0).toFixed(2)} Bs.</p>
+                <p><strong>Tiempo de Juego Total:</strong> ${closing.totalTimeMinutes ?? 0} minutos</p>
+                <p><strong>Cantidad Transacciones:</strong> ${closing.details?.paymentsCount ?? 0}</p>
               </div>
               <div>
-                <p><strong>Efectivo Declarado ($):</strong> $${closing.details.cashUsd.toFixed(2)}</p>
-                <p><strong>Efectivo Declarado (Bs.):</strong> ${closing.details.cashVes.toFixed(2)} Bs.</p>
-                <p><strong>Pago Móvil Bs.:</strong> ${closing.details.pagoMovilVes.toFixed(2)} Bs.</p>
-                <p><strong>Punto de Venta Bs.:</strong> ${closing.details.posVes.toFixed(2)} Bs.</p>
+                <p><strong>Efectivo Declarado ($):</strong> $${(closing.details?.cashUsd ?? 0).toFixed(2)}</p>
+                <p><strong>Efectivo Declarado (Bs.):</strong> ${(closing.details?.cashVes ?? 0).toFixed(2)} Bs.</p>
+                <p><strong>Pago Móvil Bs.:</strong> ${(closing.details?.pagoMovilVes ?? 0).toFixed(2)} Bs.</p>
+                <p><strong>Punto de Venta Bs.:</strong> ${(closing.details?.posVes ?? 0).toFixed(2)} Bs.</p>
               </div>
             </div>
           </div>
           <div class="section">
-            <p><strong>Notas de Entrega:</strong> ${closing.details.notes || 'Ninguna registrada'}</p>
+            <p><strong>Notas de Entrega:</strong> ${closing.details?.notes || 'Ninguna registrada'}</p>
           </div>
           <script>window.print();</script>
         </body>
