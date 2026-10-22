@@ -503,6 +503,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('gz_current_user', JSON.stringify(user));
         return { success: true, user };
       }
+      if (!res.ok && (res.status === 502 || res.status === 503 || res.status === 504)) {
+        return { success: false, error: `El servidor backend no responde (Error ${res.status} Bad Gateway). Verifica que el servicio de Node.js esté corriendo en tu servidor.` };
+      }
       return { success: false, error: data.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.' };
     } catch (e: unknown) {
       const err = e as { message?: string };

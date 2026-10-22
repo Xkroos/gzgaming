@@ -1040,6 +1040,8 @@ app.post('/api/audit-logs', async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
 // 12. INVESTMENTS / GASTOS (Solo Admin y Encargado)
 app.get('/api/investments', managers, async (req, res) => {
   try {
