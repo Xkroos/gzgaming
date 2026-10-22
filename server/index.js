@@ -200,7 +200,7 @@ app.post('/api/auth/login', async (req, res) => {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   if (!username) {
-    return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
+    return res.json({ success: false, error: 'El nombre de usuario es obligatorio' });
   }
   try {
     const result = await pool.query(
@@ -209,7 +209,7 @@ app.post('/api/auth/login', async (req, res) => {
     );
     if (result.rowCount === 0) {
       await auditLog(null, 'LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
-      return res.status(401).json({ error: 'Usuario no encontrado o inactivo' });
+      return res.json({ success: false, error: 'Usuario no encontrado o inactivo' });
     }
 
     const user = result.rows[0];
@@ -235,20 +235,22 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (!passwordMatch) {
       await auditLog(null, 'LOGIN_FAIL', `Contraseña incorrecta para el usuario: ${username}`, 'Fallo');
-      return res.status(401).json({ error: 'Contraseña incorrecta' });
+      return res.json({ success: false, error: 'Contraseña incorrecta' });
     }
 
+    const token = signToken({ id: user.id });
     res.json({
+      success: true,
       id: user.id,
       username: user.username,
       fullName: user.full_name,
       role: user.role,
       status: user.status,
       createdAt: user.created_at,
-      token: signToken({ id: user.id })
+      token
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

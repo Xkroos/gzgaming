@@ -455,16 +455,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password })
       });
-      if (res.ok) {
-        const user = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success !== false && (data.user || data.token || data.id)) {
+        const user: User = data.user || data;
         setCurrentUser(user);
         localStorage.setItem('gz_current_user', JSON.stringify(user));
         writeLog('LOGIN', `Inicio de sesión exitoso como ${user.fullName} (${user.role})`, 'Éxito');
         return { success: true, user };
       }
-      const err = await res.json().catch(() => ({}));
       writeLog('LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
-      return { success: false, error: err.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.' };
+      return { success: false, error: data.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.' };
     } catch (e: unknown) {
       const err = e as { message?: string };
       console.error("Login request failed:", e);
