@@ -184,7 +184,7 @@ async function auditLog(user, action, details, status = 'Éxito') {
   try {
     await pool.query(
       `INSERT INTO audit_logs (user_id, username, role, action, details, status) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [user?.id || null, user?.fullName || 'System', user?.role || 'System', action, details, status]
+      [user?.id || null, user?.fullName || user?.full_name || 'System', user?.role || 'System', action, details, status]
     );
   } catch (e) {
     console.error('[Audit] No se pudo registrar el evento:', e.message);
@@ -239,6 +239,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const token = signToken({ id: user.id });
+    await auditLog(user, 'LOGIN', `Inicio de sesión exitoso como ${user.full_name} (${user.role})`, 'Éxito');
     res.json({
       success: true,
       id: user.id,

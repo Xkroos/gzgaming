@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, getAuthToken } from '../lib/api';
 
 // -------------------------------------------------------------
 // TYPES & INTERFACES
@@ -277,6 +277,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // HELPER FOR WRITING TO AUDIT LOGS IN DATABASE
   // -------------------------------------------------------------
   const writeLog = async (action: string, details: string, status: 'Éxito' | 'Fallo' | 'Advertencia' = 'Éxito') => {
+    // Solo enviar logs a la base de datos si hay un usuario autenticado y token válido
+    if (!currentUser || !getAuthToken()) {
+      return;
+    }
     try {
       const res = await apiFetch('/api/audit-logs', {
         method: 'POST',
@@ -317,15 +321,17 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         localStorage.setItem('gz_bcv_rate', String(rate));
         if (force) {
           localStorage.setItem('gz_bcv_rate_is_manual', 'false');
-          writeLog('BCV_SYNC', `Sincronización forzada de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
-        } else {
-          writeLog('BCV_SYNC', `Sincronización de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
+          if (currentUser) {
+            writeLog('BCV_SYNC', `Sincronización forzada de tasa BCV exitosa: ${rate} VES/$`, 'Éxito');
+          }
         }
       }
     } catch (e: unknown) {
       const err = e as { message?: string };
       console.warn("Falla al conectar a dolarapi. Usando tasa alternativa.", e);
-      writeLog('BCV_SYNC', `Fallo al sincronizar tasa BCV: ${err.message || 'Error de red'}. Usando tasa de respaldo.`, 'Advertencia');
+      if (force && currentUser) {
+        writeLog('BCV_SYNC', `Fallo al sincronizar tasa BCV: ${err.message || 'Error de red'}. Usando tasa de respaldo.`, 'Advertencia');
+      }
     } finally {
       setIsBcvLoading(false);
     }
@@ -460,15 +466,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const user: User = data.user || data;
         setCurrentUser(user);
         localStorage.setItem('gz_current_user', JSON.stringify(user));
-        writeLog('LOGIN', `Inicio de sesión exitoso como ${user.fullName} (${user.role})`, 'Éxito');
         return { success: true, user };
       }
-      writeLog('LOGIN_FAIL', `Intento de acceso fallido para el usuario: ${username}`, 'Fallo');
       return { success: false, error: data.error || 'Usuario o contraseña incorrectos, o cuenta inactiva.' };
     } catch (e: unknown) {
       const err = e as { message?: string };
       console.error("Login request failed:", e);
-      writeLog('LOGIN_FAIL', `Fallo de conexión al iniciar sesión para: ${username}`, 'Fallo');
       return { success: false, error: err?.message || 'Error de conexión con el servidor. Verifica que el backend esté corriendo.' };
     }
   };
