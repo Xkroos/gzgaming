@@ -122,12 +122,30 @@ export async function initDatabase() {
       console.log('El estado Revision ya existe o hubo un error al agregarlo: ', e.message);
     }
 
+    // Asegurar que existe la tabla 'investments'
+    console.log('Verificando tabla investments...');
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS investments (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        title VARCHAR(150) NOT NULL,
+        description TEXT,
+        category VARCHAR(50) NOT NULL DEFAULT 'General',
+        amount_usd DECIMAL(10, 2) NOT NULL CHECK (amount_usd >= 0),
+        amount_ves DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+        user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        user_name VARCHAR(100) NOT NULL DEFAULT 'Administrador',
+        date DATE NOT NULL DEFAULT CURRENT_DATE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('Tabla investments verificada/creada con éxito.');
+
     // Habilitar RLS en todas las tablas para máxima seguridad
     console.log('Habilitando seguridad RLS en todas las tablas...');
     const tables = [
       'console_types', 'users', 'pcs', 'plans', 'offers', 
       'sessions', 'payments', 'inventory', 'inventory_logs', 
-      'shift_closings', 'credentials', 'audit_logs'
+      'shift_closings', 'credentials', 'audit_logs', 'investments'
     ];
     for (const table of tables) {
       await pool.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);

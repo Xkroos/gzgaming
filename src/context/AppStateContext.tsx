@@ -156,6 +156,19 @@ export interface AuditLog {
   createdAt: string;
 }
 
+export interface Investment {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  amountUsd: number;
+  amountVes: number;
+  userId?: string;
+  userName: string;
+  date: string;
+  createdAt: string;
+}
+
 interface AppStateContextType {
   currentUser: User | null;
   users: User[];
@@ -168,6 +181,7 @@ interface AppStateContextType {
   shiftClosings: ShiftClosing[];
   credentials: Credential[];
   auditLogs: AuditLog[];
+  investments: Investment[];
   consoleTypes: ConsoleType[];
   globalHourlyRate: number;
   bcvRate: number;
@@ -227,6 +241,10 @@ interface AppStateContextType {
   addCredential: (cred: Omit<Credential, 'id'>) => void;
   deleteCredential: (id: string) => void;
 
+  // Investments
+  addInvestment: (inv: Omit<Investment, 'id' | 'createdAt' | 'userName'>) => Promise<boolean>;
+  deleteInvestment: (id: string) => Promise<boolean>;
+
   // Console Types
   addConsoleType: (ct: Omit<ConsoleType, 'id' | 'isActive'>) => void;
   updateConsoleType: (id: string, ct: Partial<ConsoleType>) => void;
@@ -272,6 +290,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [shiftClosings, setShiftClosings] = useState<ShiftClosing[]>([]);
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
 
   // -------------------------------------------------------------
   // HELPER FOR WRITING TO AUDIT LOGS IN DATABASE
@@ -367,7 +386,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         inventoryLogsRes,
         shiftClosingsRes,
         credentialsRes,
-        auditLogsRes
+        auditLogsRes,
+        investmentsRes
       ] = await Promise.all([
         apiFetch('/api/users').then(r => r.ok ? r.json() : []),
         apiFetch('/api/console-types').then(r => r.ok ? r.json() : []),
@@ -380,6 +400,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         apiFetch('/api/shift-closings').then(r => r.ok ? r.json() : []),
         apiFetch('/api/credentials').then(r => r.ok ? r.json() : []),
         currentUser.role === 'Admin' ? apiFetch('/api/audit-logs').then(r => r.ok ? r.json() : []) : Promise.resolve([]),
+        (currentUser.role === 'Admin' || currentUser.role === 'Encargado') ? apiFetch('/api/investments').then(r => r.ok ? r.json() : []) : Promise.resolve([]),
       ]);
 
       if (Array.isArray(usersRes)) setUsers(usersRes);
@@ -393,6 +414,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (Array.isArray(shiftClosingsRes)) setShiftClosings(shiftClosingsRes);
       if (Array.isArray(credentialsRes)) setCredentials(credentialsRes);
       if (Array.isArray(auditLogsRes)) setAuditLogs(auditLogsRes);
+      if (Array.isArray(investmentsRes)) setInvestments(investmentsRes);
     } catch (error) {
       console.error('Error fetching data from API server:', error);
     }
@@ -417,6 +439,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     void fetchAllData();
     const interval = setInterval(fetchDynamicData, 5000);
     return () => clearInterval(interval);
+  }, [currentUser]);
+
+  // Si la API detecta 401 Unauthorized (token vencido o servidor reiniciado), cerrar sesión en el estado
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      if (currentUser) {
+        console.warn('[Auth] Sesión expirada o token inválido. Cerrando sesión automáticamente...');
+        setCurrentUser(null);
+      }
+    };
+
+    window.addEventListener('gz:auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('gz:auth_expired', handleAuthExpired);
   }, [currentUser]);
 
   // -------------------------------------------------------------
@@ -1158,6 +1193,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     writeLog('GLOBAL_RATE_UPDATE', `Tarifa global por hora actualizada a $${rate.toFixed(2)}/h`, 'Éxito');
   };
 
+  // -------------------------------------------------------------
+  // INVESTMENTS ACTIONS (Admin & Encargado)
+  // -------------------------------------------------------------
+  const addInvestment = async (inv: Omit<Investment, 'id' | 'createdAt' | 'userName'>): Promise<boolean> => {
+    try {
+      const res = await apiFetch('/api/investments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inv)
+      });
+      if (res.ok) {
+        const newInv = await res.json();
+        setInvestments(prev => [newInv, ...prev]);
+        writeLog('INVERSION_CREATE', `Inversión registrada: ${inv.title} ($${Number(inv.amountUsd).toFixed(2)})`, 'Éxito');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error al agregar inversión:', e);
+      return false;
+    }
+  };
+
+  const deleteInvestment = async (id: string): Promise<boolean> => {
+    try {
+      const res = await apiFetch(`/api/investments/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setInvestments(prev => prev.filter(i => i.id !== id));
+        writeLog('INVERSION_DELETE', `Inversión eliminada ID: ${id}`, 'Advertencia');
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('Error al eliminar inversión:', e);
+      return false;
+    }
+  };
+
   // Context value assignment
   return (
     <AppStateContext.Provider
@@ -1173,6 +1246,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         shiftClosings,
         credentials,
         auditLogs,
+        investments,
         bcvRate,
         isBcvLoading,
         consoleTypes,
@@ -1213,6 +1287,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         
         addCredential,
         deleteCredential,
+
+        addInvestment,
+        deleteInvestment,
 
         addConsoleType,
         updateConsoleType,

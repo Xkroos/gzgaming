@@ -112,9 +112,9 @@ function startGameTimer() {
 // ============================================================================
 // AUTENTICACIÓN (token firmado con HMAC-SHA256, sin dependencias externas)
 // ============================================================================
-const AUTH_SECRET = process.env.AUTH_SECRET || crypto.randomBytes(32).toString('hex');
+const AUTH_SECRET = process.env.AUTH_SECRET || 'gamezone_jwt_production_stable_secret_key_2026_gz';
 if (!process.env.AUTH_SECRET) {
-  console.warn('[Auth] AUTH_SECRET no definido en .env. Se generó uno temporal: las sesiones se cerrarán al reiniciar el servidor.');
+  console.log('[Auth] Usando AUTH_SECRET estable por defecto. Para mayor seguridad puedes definir AUTH_SECRET en tu archivo .env.');
 }
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
 
@@ -1037,6 +1037,64 @@ app.post('/api/audit-logs', async (req, res) => {
       RETURNING id, user_id as "userId", username, role, action, details, status, created_at as "createdAt"
     `, [userId, username, role, action, details, status || 'Éxito']);
     res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+// 12. INVESTMENTS / GASTOS (Solo Admin y Encargado)
+app.get('/api/investments', managers, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, title, description, category, 
+             amount_usd as "amountUsd", amount_ves as "amountVes", 
+             user_id as "userId", user_name as "userName", 
+             to_char(date, 'YYYY-MM-DD') as "date", 
+             created_at as "createdAt"
+      FROM investments ORDER BY date DESC, created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/investments', managers, async (req, res) => {
+  const { title, description, category, amountUsd, amountVes, date } = req.body;
+  if (!title || amountUsd === undefined) {
+    return res.status(400).json({ error: 'Título y monto USD son requeridos' });
+  }
+  try {
+    const userId = req.user?.id || null;
+    const userName = req.user?.fullName || 'Personal';
+    const invDate = date || new Date().toISOString().split('T')[0];
+
+    const result = await pool.query(`
+      INSERT INTO investments (title, description, category, amount_usd, amount_ves, user_id, user_name, date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      RETURNING id, title, description, category, 
+                amount_usd as "amountUsd", amount_ves as "amountVes", 
+                user_id as "userId", user_name as "userName", 
+                to_char(date, 'YYYY-MM-DD') as "date", 
+                created_at as "createdAt"
+    `, [title, description || '', category || 'General', Number(amountUsd), Number(amountVes || 0), userId, userName, invDate]);
+
+    await auditLog(req.user, 'INVERSION_CREATE', `Inversión registrada: ${title} ($${Number(amountUsd).toFixed(2)}) - ${category || 'General'}`, 'Éxito');
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/investments/:id', managers, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const check = await pool.query('SELECT title, amount_usd FROM investments WHERE id = $1', [id]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ error: 'Inversión no encontrada' });
+    }
+    const inv = check.rows[0];
+    await pool.query('DELETE FROM investments WHERE id = $1', [id]);
+    await auditLog(req.user, 'INVERSION_DELETE', `Inversión eliminada: ${inv.title} ($${Number(inv.amount_usd).toFixed(2)})`, 'Advertencia');
+    res.json({ success: true, message: 'Inversión eliminada correctamente' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

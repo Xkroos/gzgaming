@@ -10,14 +10,15 @@ import { Staff } from './views/Staff';
 import { Credentials } from './views/Credentials';
 import { AuditLogs } from './views/AuditLogs';
 import { ConsoleTypes } from './views/ConsoleTypes';
+import { Statistics } from './views/Statistics';
 import {
-  Monitor, LayoutDashboard, DollarSign, Package, Award, Users, Key, Shield, RefreshCw, LogOut, Landmark, Clock, Menu, X, Gamepad2
+  Monitor, LayoutDashboard, DollarSign, Package, Award, Users, Key, Shield, RefreshCw, LogOut, Landmark, Clock, Menu, X, Gamepad2, TrendingUp
 } from 'lucide-react';
 import './styles/global.css';
 import './styles/app.css';
 
 // Active View type
-type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'console-types';
+type ViewType = 'dashboard' | 'pc-console' | 'payments' | 'inventory' | 'plans' | 'staff' | 'credentials' | 'audit-logs' | 'console-types' | 'statistics';
 
 const MainAppContent: React.FC = () => {
   const { currentUser, loginUser, logoutUser, bcvRate, fetchBcvRate, isBcvLoading, pcs, payments, consoleTypes } = useAppState();
@@ -49,6 +50,15 @@ const MainAppContent: React.FC = () => {
       });
     }
   }, [pcs, toast]);
+
+  // Notificar al usuario si la sesión caducó
+  useEffect(() => {
+    const handleAuthExpired = () => {
+      toast.warning('Sesión expirada', 'Tu sesión ha caducado o el servidor se reinició. Inicia sesión nuevamente.');
+    };
+    window.addEventListener('gz:auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('gz:auth_expired', handleAuthExpired);
+  }, [toast]);
 
   // Close sidebar when navigating on mobile
   const handleNavClick = (view: ViewType) => {
@@ -101,7 +111,8 @@ const MainAppContent: React.FC = () => {
         return <Credentials />;
       case 'audit-logs':
         return <AuditLogs />;
-
+      case 'statistics':
+        return <Statistics />;
       case 'console-types':
         return <ConsoleTypes />;
       default:
@@ -264,6 +275,16 @@ const MainAppContent: React.FC = () => {
             >
               <LayoutDashboard size={18} />
               <span>Dashboard</span>
+            </div>
+          )}
+
+          {(currentUser.role === 'Admin' || currentUser.role === 'Encargado') && (
+            <div
+              className={`nav-link ${activeView === 'statistics' ? 'active' : ''}`}
+              onClick={() => handleNavClick('statistics')}
+            >
+              <TrendingUp size={18} />
+              <span>Estadísticas</span>
             </div>
           )}
 

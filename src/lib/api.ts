@@ -43,5 +43,15 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   if (token && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  return fetch(url, { ...init, headers });
+  const response = await fetch(url, { ...init, headers });
+
+  // Si el servidor responde 401 (sesión expirada o token inválido), notificar y limpiar sesión
+  if (response.status === 401 && !url.includes('/api/auth/login')) {
+    localStorage.removeItem('gz_current_user');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gz:auth_expired'));
+    }
+  }
+
+  return response;
 }
