@@ -954,8 +954,8 @@ export const Statistics: React.FC = () => {
             </div>
           </div>
 
-          <div style={{ width: '100%', height: 260 }}>
-            <ResponsiveContainer>
+          <div style={{ width: '100%', height: 260, minWidth: 0, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={260} minWidth={0}>
               <AreaChart data={timelineChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <defs>
                   <linearGradient id="incomeGrad" x1="0" y1="0" x2="0" y2="1">
@@ -983,7 +983,7 @@ export const Statistics: React.FC = () => {
         </div>
 
         {/* Gráfico 2: Distribución de Ingresos por Tipo de Consola */}
-        <div className="glass-card" style={{ padding: '20px' }}>
+        <div className="glass-card" style={{ padding: '20px', minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <div>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'white', margin: 0 }}>Dinero Hecho por Consola</h3>
@@ -992,8 +992,8 @@ export const Statistics: React.FC = () => {
             <PieIcon size={18} style={{ color: 'var(--neon-cyan)' }} />
           </div>
 
-          <div style={{ width: '100%', height: 260 }}>
-            <ResponsiveContainer>
+          <div style={{ width: '100%', height: 260, minWidth: 0, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={260} minWidth={0}>
               <PieChart>
                 <Pie
                   data={pieChartData}
