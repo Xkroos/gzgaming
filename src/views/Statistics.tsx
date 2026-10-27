@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useAppState } from '../context/AppStateContext';
 import { useToast } from '../components/ToastNotification';
 import {
   TrendingUp, DollarSign, Clock, Calendar,
   PieChart as PieIcon, Plus, Trash2, Download,
-  Gamepad2, ShieldAlert, ArrowUpRight, ArrowDownRight
+  Gamepad2, ShieldAlert, ArrowUpRight, ArrowDownRight,
+  PackageCheck
 } from 'lucide-react';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -29,24 +30,10 @@ export const Statistics: React.FC = () => {
   const { 
     currentUser, payments, pcs, consoleTypes, 
     investments, addInvestment, deleteInvestment, 
+    inventory, inventoryLogs,
     bcvRate 
   } = useAppState();
   const { toast } = useToast();
-
-  // Control de Acceso: Exclusivo para Admin y Encargado
-  if (currentUser?.role !== 'Admin' && currentUser?.role !== 'Encargado') {
-    return (
-      <div className="view-container">
-        <div className="glass-card" style={{ textAlign: 'center', padding: '60px 20px', maxWidth: '600px', margin: '40px auto' }}>
-          <ShieldAlert size={56} style={{ color: 'var(--neon-red)', marginBottom: '16px' }} />
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'white', marginBottom: '12px' }}>Acceso Restringido</h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-            El módulo de <strong>Estadísticas, Inversión y Rendimiento Financiero</strong> es de carácter confidencial y está reservado exclusivamente para los roles de <strong>Encargado</strong> y <strong>Administrador</strong>.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // Estados de Filtros
   const [period, setPeriod] = useState<PeriodFilter>('month');
@@ -68,7 +55,7 @@ export const Statistics: React.FC = () => {
   const [isSubmittingInv, setIsSubmittingInv] = useState(false);
 
   // Helper para verificar si una fecha ISO o YYYY-MM-DD cae dentro del período seleccionado
-  const isDateInFilter = (dateInput: string | Date | undefined): boolean => {
+  const isDateInFilter = useCallback((dateInput: string | Date | undefined): boolean => {
     if (!dateInput) return false;
     const itemDate = new Date(dateInput);
     if (isNaN(itemDate.getTime())) return false;
@@ -113,7 +100,7 @@ export const Statistics: React.FC = () => {
       default:
         return true;
     }
-  };
+  }, [period, customStartDate, customEndDate]);
 
   // Texto amigable del período actual
   const periodLabel = useMemo(() => {
@@ -150,12 +137,12 @@ export const Statistics: React.FC = () => {
 
       return true;
     });
-  }, [payments, period, customStartDate, customEndDate, selectedConsoleTypeId, consoleTypes, pcs]);
+  }, [payments, isDateInFilter, selectedConsoleTypeId, consoleTypes, pcs]);
 
   // 2. Filtrar Inversiones
   const filteredInvestments = useMemo(() => {
     return investments.filter(inv => isDateInFilter(inv.date || inv.createdAt));
-  }, [investments, period, customStartDate, customEndDate]);
+  }, [investments, isDateInFilter]);
 
   // 3. Cálculos Principales (KPIs)
   const totalIncomeUsd = useMemo(() => {
@@ -177,6 +164,61 @@ export const Statistics: React.FC = () => {
   const netProfitUsd = totalIncomeUsd - totalInvestedUsd;
   const netProfitVes = totalIncomeVes - totalInvestedVes;
   const profitMargin = totalIncomeUsd > 0 ? (netProfitUsd / totalIncomeUsd) * 100 : 0;
+
+  // 3.1 Métricas de Ganancia de Inventario (Snacks, Bebidas, Mercancía)
+  const { 
+    inventoryProfitUsd, 
+    inventoryProfitVes, 
+    inventorySalesUsd, 
+    inventoryItemsSoldCount, 
+    stockPotentialProfitUsd 
+  } = useMemo(() => {
+    let salesUsd = 0;
+    let costUsd = 0;
+    let countSold = 0;
+
+    // A) Analizar logs de salida de inventario por ventas en el período
+    (inventoryLogs || []).forEach(log => {
+      if (log.changeAmount < 0 && isDateInFilter(log.createdAt)) {
+        const qty = Math.abs(log.changeAmount);
+        countSold += qty;
+        const item = (inventory || []).find(i => i.id === log.productId) || (inventory || []).find(i => i.name === log.productName);
+        const salePrice = item ? item.priceUsd : 0;
+        const purchasePrice = item ? (item.purchasePrice || 0) : 0;
+        
+        salesUsd += qty * salePrice;
+        costUsd += qty * purchasePrice;
+      }
+    });
+
+    // B) Si no hay logs detallados pero hay pagos marcados como Inventario/Extras
+    if (salesUsd === 0) {
+      filteredPayments.forEach(p => {
+        if (p.offerApplied && (p.offerApplied.includes('Venta Inventario') || p.offerApplied.includes('Extras'))) {
+          salesUsd += p.amountUsd;
+          costUsd += p.amountUsd * 0.6; // Margen de referencia aproximado del 40%
+          countSold += 1;
+        }
+      });
+    }
+
+    const profitUsd = Math.max(0, salesUsd - costUsd);
+    const profitVes = profitUsd * bcvRate;
+
+    // Ganancia potencial total del stock actual en almacén
+    const stockPot = (inventory || []).reduce((sum, item) => {
+      const margin = Math.max(0, item.priceUsd - (item.purchasePrice || 0));
+      return sum + (item.stock * margin);
+    }, 0);
+
+    return {
+      inventoryProfitUsd: profitUsd,
+      inventoryProfitVes: profitVes,
+      inventorySalesUsd: salesUsd,
+      inventoryItemsSoldCount: countSold,
+      stockPotentialProfitUsd: stockPot
+    };
+  }, [inventoryLogs, inventory, filteredPayments, bcvRate, isDateInFilter]);
 
   // 4. Métricas por Tipo de Consola (Dinero y Horas)
   const consoleMetrics = useMemo(() => {
@@ -216,7 +258,7 @@ export const Statistics: React.FC = () => {
         percentageOfTotal
       };
     }).sort((a, b) => b.incomeUsd - a.incomeUsd);
-  }, [consoleTypes, pcs, payments, period, customStartDate, customEndDate, totalIncomeUsd]);
+  }, [consoleTypes, pcs, payments, isDateInFilter, totalIncomeUsd]);
 
   // Horas totales sumadas
   const totalHoursGenerated = useMemo(() => {
@@ -430,8 +472,8 @@ export const Statistics: React.FC = () => {
             
             .kpi-grid {
               display: grid;
-              grid-template-columns: repeat(4, 1fr);
-              gap: 12px;
+              grid-template-columns: repeat(5, 1fr);
+              gap: 10px;
               margin-bottom: 22px;
             }
             .kpi-card {
@@ -521,9 +563,14 @@ export const Statistics: React.FC = () => {
               <div class="kpi-sub">Margen: ${profitMargin.toFixed(1)}%</div>
             </div>
             <div class="kpi-card">
+              <div class="kpi-title">Ganancia Inventario</div>
+              <div class="kpi-value" style="color:#d97706;">$${inventoryProfitUsd.toFixed(2)}</div>
+              <div class="kpi-sub">${inventoryProfitVes.toFixed(2)} VES (${inventoryItemsSoldCount} unid.)</div>
+            </div>
+            <div class="kpi-card">
               <div class="kpi-title">Horas Totales</div>
               <div class="kpi-value" style="color:#7c3aed;">${totalHoursGenerated.toFixed(1)} hrs</div>
-              <div class="kpi-sub">${filteredPayments.length} transacciones validadas</div>
+              <div class="kpi-sub">${filteredPayments.length} transacciones</div>
             </div>
           </div>
 
@@ -583,6 +630,21 @@ export const Statistics: React.FC = () => {
     printWindow.document.close();
     toast.success('Reporte PDF Generado', 'La ventana de impresión se ha abierto correctamente.');
   };
+
+  // Control de Acceso: Exclusivo para Admin y Encargado
+  if (currentUser?.role !== 'Admin' && currentUser?.role !== 'Encargado') {
+    return (
+      <div className="view-container">
+        <div className="glass-card" style={{ textAlign: 'center', padding: '60px 20px', maxWidth: '600px', margin: '40px auto' }}>
+          <ShieldAlert size={56} style={{ color: 'var(--neon-red)', marginBottom: '16px' }} />
+          <h2 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'white', marginBottom: '12px' }}>Acceso Restringido</h2>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+            El módulo de <strong>Estadísticas, Inversión y Rendimiento Financiero</strong> es de carácter confidencial y está reservado exclusivamente para los roles de <strong>Encargado</strong> y <strong>Administrador</strong>.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="view-container">
@@ -714,69 +776,169 @@ export const Statistics: React.FC = () => {
         )}
       </div>
 
-      {/* 4 TARJETAS KPI DE IMPACTO */}
-      <div className="kpi-grid" style={{ marginBottom: '24px' }}>
+      {/* 5 TARJETAS KPI DE IMPACTO CON CAJAS Y EFECTOS NEÓN */}
+      <div className="stat-kpi-grid">
         {/* KPI 1: Ingresos Totales */}
-        <div className="kpi-card" style={{ borderColor: 'rgba(0, 255, 136, 0.25)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span className="kpi-label">Ingresos Totales</span>
-            <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'rgba(0,255,136,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowUpRight size={18} style={{ color: 'var(--neon-green)' }} />
+        <div 
+          className="stat-kpi-card" 
+          style={{
+            '--stat-accent': '#00ff88',
+            '--stat-glow': 'rgba(0, 255, 136, 0.25)',
+            '--stat-border': 'rgba(0, 255, 136, 0.4)',
+            '--stat-icon-bg': 'rgba(0, 255, 136, 0.12)',
+            '--stat-icon-border': 'rgba(0, 255, 136, 0.3)',
+          } as React.CSSProperties}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Ingresos Totales
+            </span>
+            <div className="stat-kpi-icon-wrap">
+              <ArrowUpRight size={18} style={{ color: '#00ff88' }} />
             </div>
           </div>
-          <div className="kpi-value text-neon" style={{ color: 'var(--neon-green)', fontSize: '1.9rem' }}>
-            ${totalIncomeUsd.toFixed(2)}
+          <div>
+            <div style={{ color: '#00ff88', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              ${totalIncomeUsd.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              {totalIncomeVes.toFixed(2)} VES
+            </div>
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {totalIncomeVes.toFixed(2)} VES ({filteredPayments.length} transacciones)
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            🟢 {filteredPayments.length} transacciones validadas
           </div>
         </div>
 
         {/* KPI 2: Dinero Invertido */}
-        <div className="kpi-card" style={{ borderColor: 'rgba(255, 0, 85, 0.25)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span className="kpi-label">Dinero Invertido</span>
-            <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'rgba(255,0,85,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ArrowDownRight size={18} style={{ color: 'var(--neon-red)' }} />
+        <div 
+          className="stat-kpi-card" 
+          style={{
+            '--stat-accent': '#ff0055',
+            '--stat-glow': 'rgba(255, 0, 85, 0.25)',
+            '--stat-border': 'rgba(255, 0, 85, 0.4)',
+            '--stat-icon-bg': 'rgba(255, 0, 85, 0.12)',
+            '--stat-icon-border': 'rgba(255, 0, 85, 0.3)',
+          } as React.CSSProperties}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Dinero Invertido
+            </span>
+            <div className="stat-kpi-icon-wrap">
+              <ArrowDownRight size={18} style={{ color: '#ff0055' }} />
             </div>
           </div>
-          <div className="kpi-value" style={{ color: 'var(--neon-red)', fontSize: '1.9rem' }}>
-            ${totalInvestedUsd.toFixed(2)}
+          <div>
+            <div style={{ color: '#ff3366', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              ${totalInvestedUsd.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              {totalInvestedVes.toFixed(2)} VES
+            </div>
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            {totalInvestedVes.toFixed(2)} VES ({filteredInvestments.length} compras/gastos)
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            🔴 {filteredInvestments.length} compras / gastos
           </div>
         </div>
 
         {/* KPI 3: Ganancia Neta */}
-        <div className="kpi-card" style={{ borderColor: netProfitUsd >= 0 ? 'rgba(0, 240, 255, 0.25)' : 'rgba(255, 0, 85, 0.35)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span className="kpi-label">Ganancia Neta (Utilidad)</span>
-            <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'rgba(0,240,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <TrendingUp size={18} style={{ color: 'var(--neon-cyan)' }} />
+        <div 
+          className="stat-kpi-card" 
+          style={{
+            '--stat-accent': netProfitUsd >= 0 ? '#00f0ff' : '#ff3366',
+            '--stat-glow': netProfitUsd >= 0 ? 'rgba(0, 240, 255, 0.25)' : 'rgba(255, 51, 102, 0.25)',
+            '--stat-border': netProfitUsd >= 0 ? 'rgba(0, 240, 255, 0.4)' : 'rgba(255, 51, 102, 0.4)',
+            '--stat-icon-bg': netProfitUsd >= 0 ? 'rgba(0, 240, 255, 0.12)' : 'rgba(255, 51, 102, 0.12)',
+            '--stat-icon-border': netProfitUsd >= 0 ? 'rgba(0, 240, 255, 0.3)' : 'rgba(255, 51, 102, 0.3)',
+          } as React.CSSProperties}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Ganancia Neta
+            </span>
+            <div className="stat-kpi-icon-wrap">
+              <TrendingUp size={18} style={{ color: netProfitUsd >= 0 ? '#00f0ff' : '#ff3366' }} />
             </div>
           </div>
-          <div className="kpi-value" style={{ color: netProfitUsd >= 0 ? 'var(--neon-cyan)' : 'var(--neon-red)', fontSize: '1.9rem' }}>
-            ${netProfitUsd.toFixed(2)}
+          <div>
+            <div style={{ color: netProfitUsd >= 0 ? '#00f0ff' : '#ff3366', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              ${netProfitUsd.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              {netProfitVes.toFixed(2)} VES
+            </div>
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Margen: <strong style={{ color: profitMargin >= 0 ? 'var(--neon-green)' : 'var(--neon-red)' }}>{profitMargin.toFixed(1)}%</strong> • {netProfitVes.toFixed(2)} VES
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            ⚡ Margen: <strong style={{ color: profitMargin >= 0 ? '#00ff88' : '#ff3366' }}>{profitMargin.toFixed(1)}%</strong>
           </div>
         </div>
 
-        {/* KPI 4: Horas Totales */}
-        <div className="kpi-card" style={{ borderColor: 'rgba(138, 43, 226, 0.25)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
-            <span className="kpi-label">Horas Totales Generadas</span>
-            <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'rgba(138,43,226,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Clock size={18} style={{ color: 'var(--neon-purple)' }} />
+        {/* KPI 4: Ganancia de Inventario */}
+        <div 
+          className="stat-kpi-card" 
+          style={{
+            '--stat-accent': '#ffaa00',
+            '--stat-glow': 'rgba(255, 170, 0, 0.25)',
+            '--stat-border': 'rgba(255, 170, 0, 0.4)',
+            '--stat-icon-bg': 'rgba(255, 170, 0, 0.12)',
+            '--stat-icon-border': 'rgba(255, 170, 0, 0.3)',
+          } as React.CSSProperties}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Ganancia Inventario
+            </span>
+            <div className="stat-kpi-icon-wrap">
+              <PackageCheck size={18} style={{ color: '#ffaa00' }} />
             </div>
           </div>
-          <div className="kpi-value" style={{ color: '#c084fc', fontSize: '1.9rem' }}>
-            {totalHoursGenerated.toFixed(1)} <span style={{ fontSize: '1.1rem', fontWeight: 500 }}>hrs</span>
+          <div>
+            <div style={{ color: '#ffb703', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              ${inventoryProfitUsd.toFixed(2)}
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              {inventoryProfitVes.toFixed(2)} VES
+            </div>
           </div>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Top: {topConsole ? `${topConsole.emoji} ${topConsole.name}` : 'Ninguna'}
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            {inventoryItemsSoldCount > 0 ? (
+              <span>🛍️ {inventoryItemsSoldCount} vendidos · Ventas: ${inventorySalesUsd.toFixed(2)}</span>
+            ) : (
+              <span>📦 Stock tienda: ${stockPotentialProfitUsd.toFixed(2)} pot.</span>
+            )}
+          </div>
+        </div>
+
+        {/* KPI 5: Horas Totales */}
+        <div 
+          className="stat-kpi-card" 
+          style={{
+            '--stat-accent': '#a855f7',
+            '--stat-glow': 'rgba(168, 85, 247, 0.25)',
+            '--stat-border': 'rgba(168, 85, 247, 0.4)',
+            '--stat-icon-bg': 'rgba(168, 85, 247, 0.12)',
+            '--stat-icon-border': 'rgba(168, 85, 247, 0.3)',
+          } as React.CSSProperties}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              Horas Totales
+            </span>
+            <div className="stat-kpi-icon-wrap">
+              <Clock size={18} style={{ color: '#a855f7' }} />
+            </div>
+          </div>
+          <div>
+            <div style={{ color: '#c084fc', fontSize: '2rem', fontWeight: 800, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+              {totalHoursGenerated.toFixed(1)} <span style={{ fontSize: '1.1rem', fontWeight: 500 }}>hrs</span>
+            </div>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
+              Equipos & Consolas
+            </div>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            🎮 Top: {topConsole ? `${topConsole.emoji} ${topConsole.name}` : 'Ninguna'}
           </div>
         </div>
       </div>
@@ -810,7 +972,7 @@ export const Statistics: React.FC = () => {
                 <YAxis stroke="#888" fontSize={11} tickFormatter={val => `$${val}`} />
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(18, 8, 42, 0.95)', borderColor: 'rgba(138,43,226,0.3)', borderRadius: '8px' }} 
-                  formatter={(val: any) => [`$${Number(val || 0).toFixed(2)}`, '']}
+                  formatter={(val: unknown) => [`$${Number(val || 0).toFixed(2)}`, '']}
                 />
                 <Legend wrapperStyle={{ fontSize: '12px' }} />
                 <Area type="monotone" dataKey="Ingresos" stroke="#00ff88" strokeWidth={2} fillOpacity={1} fill="url(#incomeGrad)" />
@@ -849,7 +1011,7 @@ export const Statistics: React.FC = () => {
                 </Pie>
                 <Tooltip 
                   contentStyle={{ backgroundColor: 'rgba(18, 8, 42, 0.95)', borderColor: 'rgba(138,43,226,0.3)', borderRadius: '8px' }} 
-                  formatter={(val: any) => [`$${Number(val || 0).toFixed(2)}`, 'Ingreso']}
+                  formatter={(val: unknown) => [`$${Number(val || 0).toFixed(2)}`, 'Ingreso']}
                 />
               </PieChart>
             </ResponsiveContainer>

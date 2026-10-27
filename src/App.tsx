@@ -60,6 +60,23 @@ const MainAppContent: React.FC = () => {
     return () => window.removeEventListener('gz:auth_expired', handleAuthExpired);
   }, [toast]);
 
+  // Notificar al usuario si el servidor backend no responde (502 / Sin conexión)
+  useEffect(() => {
+    let lastToast = 0;
+    const handleServerOffline = () => {
+      const now = Date.now();
+      if (now - lastToast > 15000) {
+        lastToast = now;
+        toast.error(
+          'Servidor no disponible (502)',
+          'El servidor backend está tardando en responder o se está reiniciando. El sistema reintentará reconectar en breve.'
+        );
+      }
+    };
+    window.addEventListener('gz:server_offline', handleServerOffline);
+    return () => window.removeEventListener('gz:server_offline', handleServerOffline);
+  }, [toast]);
+
   // Close sidebar when navigating on mobile
   const handleNavClick = (view: ViewType) => {
     setActiveView(view);

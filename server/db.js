@@ -27,13 +27,21 @@ export let pool = null;
 export async function initDatabase() {
   console.log('Verificando base de datos PostgreSQL...');
   
+  const poolCommonConfig = {
+    max: 20,                          // Hasta 20 conexiones simultáneas
+    idleTimeoutMillis: 30000,         // Liberar conexiones inactivas tras 30s
+    connectionTimeoutMillis: 5000,    // Máximo 5s para obtener cliente (fail-fast, no colgar peticiones)
+  };
+
   if (process.env.DATABASE_URL) {
     console.log('Detectado DATABASE_URL en variables de entorno. Conectando directamente...');
+    const isLocalhost = process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1');
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
-      ssl: {
+      ssl: isLocalhost ? false : {
         rejectUnauthorized: false
-      }
+      },
+      ...poolCommonConfig
     });
   } else {
     // 1. Conectar a PostgreSQL para verificar/crear la BD en local
@@ -66,8 +74,14 @@ export async function initDatabase() {
     pool = new Pool({
       ...dbConfig,
       database: DB_NAME,
+      ...poolCommonConfig
     });
   }
+
+  // Manejar errores en clientes inactivos del pool para que no provoquen caídas no controladas del proceso Node
+  pool.on('error', (err) => {
+    console.error('[PostgreSQL Pool] Error inesperado en cliente inactivo del pool (remanejado automáticamente):', err.message);
+  });
 
   // Probar la conexión
   try {

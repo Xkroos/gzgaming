@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiFetch, getAuthToken } from '../lib/api';
+import { apiFetch, getAuthToken, getStoredUser } from '../lib/api';
 
 // -------------------------------------------------------------
 // TYPES & INTERFACES
@@ -265,17 +265,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   const [isBcvLoading, setIsBcvLoading] = useState<boolean>(false);
 
-  // 2. Active Session User
+  // 2. Active Session User (Validando inmediatamente contra fecha de expiración del token)
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('gz_current_user');
-    if (!saved) return null;
-    try {
-      const u = JSON.parse(saved);
-      if (!u || !u.token) return null;
-      return u;
-    } catch {
-      return null;
-    }
+    return getStoredUser<User>();
   });
 
   const [users, setUsers] = useState<User[]>([]);
@@ -370,9 +362,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   // -------------------------------------------------------------
-  // FETCH ALL DATA FROM DATABASE PERIODICALLY
   // -------------------------------------------------------------
-  const fetchAllData = async () => {
+  // FETCH ALL DATA FROM DATABASE PERIODICALLY (OPTIMIZADO VÍA BOOTSTRAP)
+  // -------------------------------------------------------------
+  const fetchAllDataLegacy = async () => {
     if (!currentUser) return;
     try {
       const [
@@ -389,18 +382,18 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         auditLogsRes,
         investmentsRes
       ] = await Promise.all([
-        apiFetch('/api/users').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/console-types').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/pcs').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/plans').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/offers').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/payments').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/inventory').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/inventory-logs').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/shift-closings').then(r => r.ok ? r.json() : []),
-        apiFetch('/api/credentials').then(r => r.ok ? r.json() : []),
-        currentUser.role === 'Admin' ? apiFetch('/api/audit-logs').then(r => r.ok ? r.json() : []) : Promise.resolve([]),
-        (currentUser.role === 'Admin' || currentUser.role === 'Encargado') ? apiFetch('/api/investments').then(r => r.ok ? r.json() : []) : Promise.resolve([]),
+        apiFetch('/api/users').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/console-types').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/pcs').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/plans').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/offers').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/payments').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/inventory').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/inventory-logs').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/shift-closings').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/credentials').then(r => r.ok ? r.json() : null).catch(() => null),
+        currentUser.role === 'Admin' ? apiFetch('/api/audit-logs').then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve([]),
+        (currentUser.role === 'Admin' || currentUser.role === 'Encargado') ? apiFetch('/api/investments').then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve([]),
       ]);
 
       if (Array.isArray(usersRes)) setUsers(usersRes);
@@ -415,8 +408,37 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (Array.isArray(credentialsRes)) setCredentials(credentialsRes);
       if (Array.isArray(auditLogsRes)) setAuditLogs(auditLogsRes);
       if (Array.isArray(investmentsRes)) setInvestments(investmentsRes);
+    } catch (e) {
+      console.error('Error en fetch legacy:', e);
+    }
+  };
+
+  const fetchAllData = async () => {
+    if (!currentUser) return;
+    try {
+      const res = await apiFetch('/api/bootstrap');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.users)) setUsers(data.users);
+        if (Array.isArray(data.consoleTypes)) setConsoleTypes(data.consoleTypes);
+        if (Array.isArray(data.pcs)) setPcs(data.pcs);
+        if (Array.isArray(data.plans)) setPlans(data.plans);
+        if (Array.isArray(data.offers)) setOffers(data.offers);
+        if (Array.isArray(data.payments)) setPayments(data.payments);
+        if (Array.isArray(data.inventory)) setInventory(data.inventory);
+        if (Array.isArray(data.inventoryLogs)) setInventoryLogs(data.inventoryLogs);
+        if (Array.isArray(data.shiftClosings)) setShiftClosings(data.shiftClosings);
+        if (Array.isArray(data.credentials)) setCredentials(data.credentials);
+        if (Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
+        if (Array.isArray(data.investments)) setInvestments(data.investments);
+      } else if (res.status === 404) {
+        // Fallback a endpoints individuales si el backend no tiene /api/bootstrap
+        await fetchAllDataLegacy();
+      } else {
+        console.warn(`[Bootstrap] Error HTTP ${res.status}. Conservando datos existentes.`);
+      }
     } catch (error) {
-      console.error('Error fetching data from API server:', error);
+      console.error('Error al sincronizar datos desde el servidor API:', error);
     }
   };
 
@@ -424,8 +446,8 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (!currentUser) return;
     try {
       const [pcsRes, paymentsRes] = await Promise.all([
-        apiFetch('/api/pcs').then(r => r.ok ? r.json() : null),
-        apiFetch('/api/payments').then(r => r.ok ? r.json() : null)
+        apiFetch('/api/pcs').then(r => r.ok ? r.json() : null).catch(() => null),
+        apiFetch('/api/payments').then(r => r.ok ? r.json() : null).catch(() => null)
       ]);
       if (Array.isArray(pcsRes)) setPcs(pcsRes);
       if (Array.isArray(paymentsRes)) setPayments(paymentsRes);
@@ -434,12 +456,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
+  // Carga inicial y validación de la sesión activa
   useEffect(() => {
     if (!currentUser) return;
-    void fetchAllData();
+
+    // Verificar rápidamente con el backend que la sesión sea válida
+    apiFetch('/api/auth/me')
+      .then(res => {
+        if (!res.ok && res.status === 401) {
+          console.warn('[Auth] Token rechazado por el backend (401). Cerrando sesión...');
+          setCurrentUser(null);
+          return;
+        }
+        void fetchAllData();
+      })
+      .catch(() => {
+        // Si hay error temporal de red, intentar cargar los datos directamente
+        void fetchAllData();
+      });
+
     const interval = setInterval(fetchDynamicData, 5000);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.token]);
 
   // Si la API detecta 401 Unauthorized (token vencido o servidor reiniciado), cerrar sesión en el estado
   useEffect(() => {

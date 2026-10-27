@@ -9,6 +9,14 @@ import { setTuyaDeviceState } from './tuya.js';
 
 dotenv.config();
 
+// Manejadores globales para evitar que un error imprevisto termine el proceso de Node.js
+process.on('uncaughtException', (err) => {
+  console.error('[CRITICAL - Uncaught Exception]:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[CRITICAL - Unhandled Rejection at]:', promise, 'reason:', reason);
+});
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -26,17 +34,30 @@ const allowedOrigins = [
 ];
 app.use(cors({
   origin: (origin, callback) => {
-    // Permitir peticiones sin origin (ej. Postman, curl, mismo servidor)
+    // Permitir peticiones sin origin (ej. Postman, curl, mismo servidor, clientes locales de escritorio)
     if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS bloqueado para el origen: ${origin}`));
+      return callback(null, true);
     }
+    // Permitir IPs de red local o subdominios de desarrollo
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    // Rechazar sin lanzar excepción que genere un error 500 en Express
+    console.warn(`[CORS] Origen no permitido por política: ${origin}`);
+    callback(null, false);
   },
   credentials: true,
 }));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Rutas de chequeo de salud para proxies inversos (Nginx, PM2, Docker, Uptime)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
 
 // Interceptor para imprimir errores >= 400 en la consola del servidor
 app.use((req, res, next) => {
@@ -61,50 +82,48 @@ app.use((req, res, next) => {
 });
 
 // ============================================================================
-// BACKGROUND TICKER: DECREMENTAR TIEMPO DE JUEGO CADA SEGUNDO
+// BACKGROUND TICKER: DECREMENTAR TIEMPO DE JUEGO CADA SEGUNDO (OPTIMIZADO)
 // ============================================================================
+let isTimerRunning = false;
 function startGameTimer() {
   setInterval(async () => {
-    if (!pool) return;
+    if (!pool || isTimerRunning) return;
+    isTimerRunning = true;
 
     try {
-      // 1. Buscar todas las PCs en uso con tiempo restante > 0
-      const activePcs = await pool.query(
-        `SELECT id, remaining_time, tuya_device_id FROM pcs WHERE status = 'En Uso' AND remaining_time > 0`
+      // 1. Bloquear PCs cuyo tiempo expire en este segundo (remaining_time <= 1)
+      const expiringPcs = await pool.query(
+        `UPDATE pcs 
+         SET status = 'Bloqueada', remaining_time = 0 
+         WHERE status = 'En Uso' AND remaining_time <= 1
+         RETURNING id, tuya_device_id`
       );
 
-      for (const pc of activePcs.rows) {
-        const newTime = pc.remaining_time - 1;
-
-        if (newTime === 0) {
-          // Bloquear PC
-          await pool.query(
-            `UPDATE pcs SET status = 'Bloqueada', remaining_time = 0 WHERE id = $1`,
-            [pc.id]
-          );
-
-          if (pc.tuya_device_id) {
-            setTuyaDeviceState(pc.tuya_device_id, false);
-          }
-
-          // Registrar en auditoría
-          await pool.query(
-            `INSERT INTO audit_logs (username, role, action, details, status)
-             VALUES ('System', 'System', 'PC_LOCK', $1, 'Advertencia')`,
-            [`El tiempo de juego en ${pc.id} llegó a 0. Pantalla bloqueada automáticamente.`]
-          );
-
-          console.log(`[Timer] PC ${pc.id} bloqueada por expiración de tiempo.`);
-        } else {
-          // Decrementar
-          await pool.query(
-            `UPDATE pcs SET remaining_time = $1 WHERE id = $2`,
-            [newTime, pc.id]
-          );
+      for (const pc of expiringPcs.rows) {
+        if (pc.tuya_device_id) {
+          setTuyaDeviceState(pc.tuya_device_id, false).catch(err => {
+            console.error(`[Tuya Error] Dispositivo ${pc.tuya_device_id}:`, err.message);
+          });
         }
+
+        // Registrar en auditoría de forma segura
+        pool.query(
+          `INSERT INTO audit_logs (username, role, action, details, status)
+           VALUES ('System', 'System', 'PC_LOCK', $1, 'Advertencia')`,
+          [`El tiempo de juego en ${pc.id} llegó a 0. Pantalla bloqueada automáticamente.`]
+        ).catch(e => console.error('[Audit PC_LOCK Error]:', e.message));
+
+        console.log(`[Timer] PC ${pc.id} bloqueada por expiración de tiempo.`);
       }
+
+      // 2. Decrementar el tiempo de todas las demás PCs en un solo query atómico
+      await pool.query(
+        `UPDATE pcs SET remaining_time = remaining_time - 1 WHERE status = 'En Uso' AND remaining_time > 1`
+      );
     } catch (err) {
       console.error('[Timer Error] Error en el ciclo del temporizador de juego:', err.message);
+    } finally {
+      isTimerRunning = false;
     }
   }, 1000);
 }
@@ -116,7 +135,8 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'gamezone_jwt_production_stable_s
 if (!process.env.AUTH_SECRET) {
   console.log('[Auth] Usando AUTH_SECRET estable por defecto. Para mayor seguridad puedes definir AUTH_SECRET en tu archivo .env.');
 }
-const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 horas
+// Token válido por 7 días para evitar cierres inesperados de sesión durante o entre jornadas
+const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function signToken(payload) {
   const body = Buffer.from(JSON.stringify({ ...payload, exp: Date.now() + TOKEN_TTL_MS })).toString('base64url');
@@ -141,11 +161,25 @@ function verifyToken(token) {
   }
 }
 
-// Rutas públicas: login y consulta de estado de una PC (usada por el cliente de escritorio GameZoneClient)
+// Cache en memoria para la validación de usuarios autenticados (TTL 30 segundos)
+// Evita que 12 peticiones simultáneas del frontend hagan 12 consultas SELECT a PostgreSQL
+const userAuthCache = new Map();
+const USER_CACHE_TTL_MS = 30 * 1000;
+
+export function invalidateUserAuthCache(userId) {
+  if (userId) {
+    userAuthCache.delete(userId);
+  } else {
+    userAuthCache.clear();
+  }
+}
+
+// Rutas públicas: login, health y consulta de estado de una PC
 function isPublicRoute(req) {
   const p = req.path;
   if (req.method === 'POST' && (p === '/auth/login' || p === '/api/auth/login')) return true;
   if (req.method === 'GET' && (/^\/pcs\/[^/]+$/.test(p) || /^\/api\/pcs\/[^/]+$/.test(p))) return true;
+  if (req.method === 'GET' && (p === '/health' || p === '/api/health')) return true;
   return false;
 }
 
@@ -157,14 +191,24 @@ app.use('/api', async (req, res, next) => {
   if (!payload) {
     return res.status(401).json({ error: 'No autenticado o sesión expirada' });
   }
+
+  // Comprobar en cache de memoria para evitar saturar el pool de PostgreSQL
+  const cached = userAuthCache.get(payload.id);
+  if (cached && (Date.now() - cached.cachedAt < USER_CACHE_TTL_MS)) {
+    req.user = cached.user;
+    return next();
+  }
+
   try {
-    // Se consulta el usuario en cada petición para aplicar al instante cambios de rol o desactivaciones
     const r = await pool.query('SELECT id, username, full_name, role, status FROM users WHERE id = $1', [payload.id]);
     const u = r.rows[0];
     if (!u || u.status !== 'Activo') {
+      userAuthCache.delete(payload.id);
       return res.status(401).json({ error: 'Usuario inactivo o inexistente' });
     }
-    req.user = { id: u.id, username: u.username, fullName: u.full_name, role: u.role };
+    const userObj = { id: u.id, username: u.username, fullName: u.full_name, role: u.role };
+    userAuthCache.set(payload.id, { user: userObj, cachedAt: Date.now() });
+    req.user = userObj;
     next();
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -255,6 +299,17 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Endpoint para validar sesión activa rápidamente y obtener datos del usuario
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+  res.json({
+    success: true,
+    user: req.user
+  });
+});
+
 // 2. USERS (STAFF)
 app.get('/api/users', async (req, res) => {
   try {
@@ -288,6 +343,7 @@ app.post('/api/users', adminOnly, async (req, res) => {
       VALUES ($1, $2, $3, $4, 'Activo')
       RETURNING id, username, full_name as "fullName", role, status, created_at as "createdAt"
     `, [username, passHash, fullName, role]);
+    invalidateUserAuthCache();
     res.status(201).json(result.rows[0]);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -314,6 +370,8 @@ app.put('/api/users/:id', adminOnly, async (req, res) => {
       `, [fullName, role, status, id]);
     }
 
+    invalidateUserAuthCache(id);
+
     const result = await pool.query(`
       SELECT id, username, full_name as "fullName", role, status, created_at as "createdAt"
       FROM users WHERE id = $1
@@ -330,11 +388,13 @@ app.delete('/api/users/:id', adminOnly, async (req, res) => {
     return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta' });
   }
   try {
+    invalidateUserAuthCache(id);
     await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
     res.json({ success: true, deleted: true });
   } catch (error) {
     // 23503: foreign_key_violation
     if (error.code === '23503') {
+      invalidateUserAuthCache(id);
       await pool.query(`UPDATE users SET status = 'Inactivo' WHERE id = $1`, [id]);
       res.json({ success: true, deleted: false, message: 'El usuario tiene historial financiero y no puede ser eliminado por auditoría. Ha sido marcado como Inactivo.' });
     } else {
@@ -909,7 +969,10 @@ app.post('/api/inventory-logs', async (req, res) => {
       userName: details.rows[0].userName
     });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -1098,6 +1161,67 @@ app.delete('/api/investments/:id', managers, async (req, res) => {
     await auditLog(req.user, 'INVERSION_DELETE', `Inversión eliminada: ${inv.title} ($${Number(inv.amount_usd).toFixed(2)})`, 'Advertencia');
     res.json({ success: true, message: 'Inversión eliminada correctamente' });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 13. BOOTSTRAP / INITIAL DATA (Carga consolidada ultra-rápida de todos los módulos en 1 sola petición)
+app.get('/api/bootstrap', async (req, res) => {
+  try {
+    const isMaster = req.user?.role === 'Admin';
+    const isManager = req.user?.role === 'Admin' || req.user?.role === 'Encargado';
+
+    const [
+      usersRes,
+      consoleTypesRes,
+      pcsRes,
+      plansRes,
+      offersRes,
+      paymentsRes,
+      inventoryRes,
+      inventoryLogsRes,
+      shiftClosingsRes,
+      credentialsRes,
+      auditLogsRes,
+      investmentsRes
+    ] = await Promise.all([
+      pool.query(`SELECT id, username, full_name as "fullName", role, status, created_at as "createdAt" FROM users ORDER BY created_at DESC`),
+      pool.query(`SELECT id, name, emoji, hourly_rate as "hourlyRate", is_active as "isActive" FROM console_types ORDER BY name ASC`),
+      pool.query(`SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId" FROM pcs ORDER BY id ASC`),
+      pool.query(`SELECT id, name, description, duration_minutes as "durationMinutes", price_usd as "priceUsd", is_active as "isActive" FROM plans ORDER BY duration_minutes ASC`),
+      pool.query(`SELECT id, name, description, discount_percentage as "discountPercentage", day_of_week as "dayOfWeek", is_active as "isActive" FROM offers ORDER BY day_of_week ASC`),
+      pool.query(`SELECT p.id, p.session_id as "sessionId", p.operator_id as "operatorId", u1.full_name as "operatorName", p.validator_id as "validatorId", u2.full_name as "validatorName", p.amount_usd as "amountUsd", p.amount_ves as "amountVes", p.bcv_rate as "bcvRate", p.payment_method as "paymentMethod", (p.receipt_image_url IS NOT NULL) as "hasReceipt", p.reference, p.status, p.offer_applied as "offerApplied", p.created_at as "createdAt", p.validated_at as "validatedAt" FROM payments p LEFT JOIN users u1 ON p.operator_id = u1.id LEFT JOIN users u2 ON p.validator_id = u2.id ORDER BY p.created_at DESC`),
+      pool.query(`SELECT id, name, description, purchase_price as "purchasePrice", price_usd as "priceUsd", stock, min_stock as "minStock", category FROM inventory ORDER BY name ASC`),
+      pool.query(`SELECT il.id, il.product_id as "productId", i.name as "productName", u.full_name as "userName", il.change_amount as "changeAmount", il.reason, il.created_at as "createdAt" FROM inventory_logs il LEFT JOIN inventory i ON il.product_id = i.id LEFT JOIN users u ON il.user_id = u.id ORDER BY il.created_at DESC`),
+      pool.query(`SELECT sc.id, sc.operator_id as "operatorId", u.full_name as "operatorName", sc.start_time as "startTime", sc.end_time as "endTime", sc.total_usd_generated as "totalUsdGenerated", sc.total_ves_generated as "totalVesGenerated", sc.total_time_minutes as "totalTimeMinutes", sc.details, sc.created_at as "createdAt" FROM shift_closings sc LEFT JOIN users u ON sc.operator_id = u.id ORDER BY sc.created_at DESC`),
+      pool.query(`SELECT id, entity_name as "entityName", login_username as "loginUsername", login_password as "loginPassword", category, notes FROM credentials ORDER BY entity_name ASC`),
+      isMaster ? pool.query(`SELECT id, user_id as "userId", username, role, action, details, status, created_at as "createdAt" FROM audit_logs ORDER BY created_at DESC LIMIT 1000`) : Promise.resolve({ rows: [] }),
+      isManager ? pool.query(`SELECT id, title, description, category, amount_usd as "amountUsd", amount_ves as "amountVes", user_id as "userId", user_name as "userName", to_char(date, 'YYYY-MM-DD') as "date", created_at as "createdAt" FROM investments ORDER BY date DESC, created_at DESC`) : Promise.resolve({ rows: [] })
+    ]);
+
+    const isOperator = req.user && req.user.role === 'Operador';
+    const credentials = credentialsRes.rows.map(r => ({
+      ...r,
+      loginUsername: isOperator ? '••••••••' : r.loginUsername,
+      loginPassword: isOperator ? '••••••••' : r.loginPassword,
+    }));
+
+    res.json({
+      users: usersRes.rows,
+      consoleTypes: consoleTypesRes.rows,
+      pcs: pcsRes.rows,
+      plans: plansRes.rows,
+      offers: offersRes.rows,
+      payments: paymentsRes.rows,
+      inventory: inventoryRes.rows,
+      inventoryLogs: inventoryLogsRes.rows,
+      shiftClosings: shiftClosingsRes.rows,
+      credentials,
+      auditLogs: auditLogsRes.rows,
+      investments: investmentsRes.rows
+    });
+  } catch (error) {
+    console.error('[Bootstrap Error]:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
