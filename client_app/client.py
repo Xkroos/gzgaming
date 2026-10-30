@@ -173,6 +173,7 @@ class GameZoneClientApp:
         self.is_running = True
         self.poll_server()
         self.keep_topmost_loop()
+        self.timer_tick()
         
     def load_config(self):
         if os.path.exists(CONFIG_FILE):
@@ -309,6 +310,17 @@ class GameZoneClientApp:
             else:
                 self.timer_window.attributes("-topmost", True)
             self.root.after(500, self.keep_topmost_loop)
+
+    def timer_tick(self):
+        if self.is_running:
+            if self.pc_status == "En Uso" and self.remaining_time > 0:
+                self.remaining_time = max(0, self.remaining_time - 1)
+                formatted_time = self.format_time(self.remaining_time)
+                self.timer_lbl.configure(text=f"⏱️ {formatted_time}")
+                if self.remaining_time == 0:
+                    self.pc_status = "Bloqueada"
+                    self.update_ui()
+            self.root.after(1000, self.timer_tick)
 
     def poll_server(self):
         if not self.is_running:

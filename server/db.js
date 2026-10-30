@@ -125,6 +125,11 @@ export async function initDatabase() {
     await pool.query('ALTER TABLE payments ADD COLUMN IF NOT EXISTS reference VARCHAR(100)');
     console.log('Columna reference verificada/creada con éxito.');
 
+    // Asegurar que existe la columna 'session_end_time' en la tabla 'pcs'
+    console.log('Verificando columna session_end_time en tabla pcs...');
+    await pool.query('ALTER TABLE pcs ADD COLUMN IF NOT EXISTS session_end_time TIMESTAMP WITH TIME ZONE');
+    console.log('Columna session_end_time verificada/creada con éxito.');
+
     // Asegurar que existe el estado 'Revision' en el ENUM 'payment_status'
     console.log('Verificando estado Revision en payment_status...');
     try {

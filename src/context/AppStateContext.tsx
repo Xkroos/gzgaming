@@ -42,6 +42,7 @@ export interface PC {
   currentSessionId?: string;
   consoleTypeId?: string;
   tuyaDeviceId?: string;
+  sessionEndTime?: string | null;
 }
 
 export interface Plan {
@@ -500,11 +501,16 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setPcs((prevPcs) => {
         return prevPcs.map((pc) => {
           if (pc.status === 'En Uso' && pc.remainingTime > 0) {
-            const newTime = pc.remainingTime - 1;
+            let newTime = pc.remainingTime - 1;
+            if (pc.sessionEndTime) {
+              const diffSec = Math.round((new Date(pc.sessionEndTime).getTime() - Date.now()) / 1000);
+              newTime = Math.max(0, diffSec);
+            }
             if (newTime === 0) {
               return {
                 ...pc,
                 remainingTime: 0,
+                sessionEndTime: null,
                 status: 'Bloqueada' as PCStatus,
               };
             }

@@ -82,7 +82,7 @@ app.use((req, res, next) => {
 });
 
 // ============================================================================
-// BACKGROUND TICKER: DECREMENTAR TIEMPO DE JUEGO CADA SEGUNDO (OPTIMIZADO)
+// BACKGROUND TICKER: GESTIÓN DE TIEMPO REAL CON RELOJ PRECISO (SIN DRIFT NI DUPLICACIÓN)
 // ============================================================================
 let isTimerRunning = false;
 function startGameTimer() {
@@ -91,11 +91,18 @@ function startGameTimer() {
     isTimerRunning = true;
 
     try {
-      // 1. Bloquear PCs cuyo tiempo expire en este segundo (remaining_time <= 1)
+      // 1. Inicializar session_end_time para cualquier PC 'En Uso' que no lo tenga (migración automática o reinicio)
+      await pool.query(`
+        UPDATE pcs 
+        SET session_end_time = CURRENT_TIMESTAMP + (remaining_time * interval '1 second')
+        WHERE status = 'En Uso' AND session_end_time IS NULL AND remaining_time > 0
+      `);
+
+      // 2. Bloquear PCs cuyo tiempo expiró (session_end_time <= CURRENT_TIMESTAMP)
       const expiringPcs = await pool.query(
         `UPDATE pcs 
-         SET status = 'Bloqueada', remaining_time = 0 
-         WHERE status = 'En Uso' AND remaining_time <= 1
+         SET status = 'Bloqueada', remaining_time = 0, session_end_time = NULL
+         WHERE status = 'En Uso' AND session_end_time IS NOT NULL AND session_end_time <= CURRENT_TIMESTAMP
          RETURNING id, tuya_device_id`
       );
 
@@ -116,9 +123,11 @@ function startGameTimer() {
         console.log(`[Timer] PC ${pc.id} bloqueada por expiración de tiempo.`);
       }
 
-      // 2. Decrementar el tiempo de todas las demás PCs en un solo query atómico
+      // 3. Sincronizar el campo remaining_time con la diferencia exacta en segundos de reloj real (Idempotente)
       await pool.query(
-        `UPDATE pcs SET remaining_time = remaining_time - 1 WHERE status = 'En Uso' AND remaining_time > 1`
+        `UPDATE pcs 
+         SET remaining_time = GREATEST(0, EXTRACT(EPOCH FROM (session_end_time - CURRENT_TIMESTAMP))::integer)
+         WHERE status = 'En Uso' AND session_end_time IS NOT NULL AND session_end_time > CURRENT_TIMESTAMP`
       );
     } catch (err) {
       console.error('[Timer Error] Error en el ciclo del temporizador de juego:', err.message);
@@ -464,8 +473,16 @@ app.get('/api/pcs', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
-             details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+             details, 
+             CASE 
+               WHEN status = 'En Uso' AND session_end_time IS NOT NULL 
+                 THEN GREATEST(0, EXTRACT(EPOCH FROM (session_end_time - CURRENT_TIMESTAMP))::integer)
+               ELSE remaining_time 
+             END as "remainingTime", 
+             total_assigned_time as "totalAssignedTime", 
+             client_name as "clientName", current_session_id as "currentSessionId", 
+             console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId",
+             session_end_time as "sessionEndTime"
       FROM pcs ORDER BY id ASC
     `);
     res.json(result.rows);
@@ -479,8 +496,16 @@ app.get('/api/pcs/:id', async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
-             details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-             client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+             details, 
+             CASE 
+               WHEN status = 'En Uso' AND session_end_time IS NOT NULL 
+                 THEN GREATEST(0, EXTRACT(EPOCH FROM (session_end_time - CURRENT_TIMESTAMP))::integer)
+               ELSE remaining_time 
+             END as "remainingTime", 
+             total_assigned_time as "totalAssignedTime", 
+             client_name as "clientName", current_session_id as "currentSessionId", 
+             console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId",
+             session_end_time as "sessionEndTime"
       FROM pcs WHERE UPPER(id) = UPPER($1)
     `, [id]);
     if (result.rowCount === 0) {
@@ -501,6 +526,7 @@ app.post('/api/pcs', adminOnly, async (req, res) => {
 
   try {
     for (const pc of pcsList) {
+      const isEnUso = pc.status === 'En Uso' && (pc.remainingTime || 0) > 0;
       await pool.query(`
         UPDATE pcs 
         SET status = $1, 
@@ -508,7 +534,11 @@ app.post('/api/pcs', adminOnly, async (req, res) => {
             total_assigned_time = $3, 
             client_name = $4, 
             current_session_id = $5,
-            hourly_rate = COALESCE($6, hourly_rate)
+            hourly_rate = COALESCE($6, hourly_rate),
+            session_end_time = CASE 
+              WHEN $8::boolean THEN CURRENT_TIMESTAMP + ($2 * interval '1 second')
+              ELSE NULL 
+            END
         WHERE id = $7
       `, [
         pc.status,
@@ -517,7 +547,8 @@ app.post('/api/pcs', adminOnly, async (req, res) => {
         pc.clientName || null,
         pc.currentSessionId || null,
         pc.hourlyRate,
-        pc.id
+        pc.id,
+        isEnUso
       ]);
     }
     res.json({ success: true });
@@ -534,10 +565,10 @@ app.post('/api/pcs/create', managers, async (req, res) => {
   }
   try {
     const result = await pool.query(`
-      INSERT INTO pcs (id, pc_name, ip_address, status, hourly_rate, details, console_type_id, remaining_time, total_assigned_time, tuya_device_id)
-      VALUES ($1, $2, $3, 'Disponible', $4, $5, $6, 0, 0, $7)
+      INSERT INTO pcs (id, pc_name, ip_address, status, hourly_rate, details, console_type_id, remaining_time, total_assigned_time, tuya_device_id, session_end_time)
+      VALUES ($1, $2, $3, 'Disponible', $4, $5, $6, 0, 0, $7, NULL)
       RETURNING id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
-                details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+                details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId", session_end_time as "sessionEndTime"
     `, [String(id).trim().toUpperCase(), pcName, ipAddress, hourlyRate, details, consoleTypeId, tuyaDeviceId]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -557,21 +588,57 @@ app.put('/api/pcs/:id', async (req, res) => {
     return res.status(403).json({ error: 'No tienes permisos para modificar la configuración del equipo' });
   }
   try {
-    const currentResult = await pool.query('SELECT status, tuya_device_id FROM pcs WHERE id = $1', [id]);
+    const currentResult = await pool.query('SELECT status, remaining_time, session_end_time, tuya_device_id FROM pcs WHERE id = $1', [id]);
     const currentPc = currentResult.rows[0];
     if (!currentPc) {
       return res.status(404).json({ error: 'PC no encontrada' });
     }
 
-    // Mantenemos tuyaDeviceId si se envía uno nuevo, o dejamos el existente si se envía null explícitamente y queremos borrar, pero lo usual es actualizarlo.
-    // Usaremos tuyaDeviceId undefined para ignorar la actualización.
-    
     // clientName / currentSessionId: si vienen explícitamente como null, se limpian (liberar PC);
     // si no vienen en el body (undefined), se conservan.
     const clearClient = clientName === null;
     const clearSession = currentSessionId === null;
 
-    let queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, clearClient, clearSession, id];
+    // Determinar nuevo estado y tiempo preciso según la transición
+    const targetStatus = status !== undefined ? status : currentPc.status;
+    let newSessionEndTime = undefined; // undefined = no tocar en la BD
+    let effectiveRemainingTime = remainingTime;
+
+    if (targetStatus === 'Disponible' || targetStatus === 'Bloqueada') {
+      newSessionEndTime = null;
+      if (effectiveRemainingTime === undefined) effectiveRemainingTime = 0;
+    } else if (targetStatus === 'Suspendida') {
+      // Al suspender la sesión, congelar el tiempo restante real y anular session_end_time
+      newSessionEndTime = null;
+      if (effectiveRemainingTime === undefined) {
+        if (currentPc.session_end_time) {
+          const diffSec = Math.max(0, Math.round((new Date(currentPc.session_end_time).getTime() - Date.now()) / 1000));
+          effectiveRemainingTime = diffSec;
+        } else {
+          effectiveRemainingTime = currentPc.remaining_time;
+        }
+      }
+    } else if (targetStatus === 'En Uso') {
+      if (effectiveRemainingTime !== undefined && Number(effectiveRemainingTime) > 0) {
+        // Se fijó tiempo nuevo o se agregó tiempo (e.g. assignPC o addTimeToPC)
+        newSessionEndTime = new Date(Date.now() + Number(effectiveRemainingTime) * 1000).toISOString();
+      } else if (currentPc.status === 'Suspendida' && !currentPc.session_end_time && currentPc.remaining_time > 0) {
+        // Reanudación de PC suspendida: proyectar a partir del tiempo que le quedaba
+        effectiveRemainingTime = currentPc.remaining_time;
+        newSessionEndTime = new Date(Date.now() + Number(currentPc.remaining_time) * 1000).toISOString();
+      } else if (!currentPc.session_end_time && currentPc.remaining_time > 0) {
+        // Fallback: estaba en uso sin session_end_time
+        effectiveRemainingTime = currentPc.remaining_time;
+        newSessionEndTime = new Date(Date.now() + Number(currentPc.remaining_time) * 1000).toISOString();
+      }
+    }
+
+    const hasNewEndTime = newSessionEndTime !== undefined;
+    let queryArgs = [
+      pcName, ipAddress, hourlyRate, details, consoleTypeId, targetStatus, 
+      effectiveRemainingTime, totalAssignedTime, clientName, currentSessionId, 
+      clearClient, clearSession, newSessionEndTime, hasNewEndTime, id
+    ];
     let query = `
       UPDATE pcs 
       SET pc_name = COALESCE($1, pc_name),
@@ -583,20 +650,33 @@ app.put('/api/pcs/:id', async (req, res) => {
           remaining_time = COALESCE($7, remaining_time),
           total_assigned_time = COALESCE($8, total_assigned_time),
           client_name = CASE WHEN $11::boolean THEN NULL ELSE COALESCE($9, client_name) END,
-          current_session_id = CASE WHEN $12::boolean THEN NULL ELSE COALESCE($10, current_session_id) END
+          current_session_id = CASE WHEN $12::boolean THEN NULL ELSE COALESCE($10, current_session_id) END,
+          session_end_time = CASE WHEN $14::boolean THEN $13::timestamp with time zone ELSE session_end_time END
     `;
 
     if (tuyaDeviceId !== undefined) {
-      queryArgs = [pcName, ipAddress, hourlyRate, details, consoleTypeId, status, remainingTime, totalAssignedTime, clientName, currentSessionId, clearClient, clearSession, tuyaDeviceId, id];
-      query += `, tuya_device_id = $13 WHERE id = $14`;
+      queryArgs = [
+        pcName, ipAddress, hourlyRate, details, consoleTypeId, targetStatus, 
+        effectiveRemainingTime, totalAssignedTime, clientName, currentSessionId, 
+        clearClient, clearSession, newSessionEndTime, hasNewEndTime, tuyaDeviceId, id
+      ];
+      query += `, tuya_device_id = $15 WHERE id = $16`;
     } else {
-      query += ` WHERE id = $13`;
+      query += ` WHERE id = $15`;
     }
 
     query += `
       RETURNING id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", 
-                details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", 
-                client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId"
+                details, 
+                CASE 
+                  WHEN status = 'En Uso' AND session_end_time IS NOT NULL 
+                    THEN GREATEST(0, EXTRACT(EPOCH FROM (session_end_time - CURRENT_TIMESTAMP))::integer)
+                  ELSE remaining_time 
+                END as "remainingTime", 
+                total_assigned_time as "totalAssignedTime", 
+                client_name as "clientName", current_session_id as "currentSessionId", 
+                console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId",
+                session_end_time as "sessionEndTime"
     `;
 
     const result = await pool.query(query, queryArgs);
@@ -1187,7 +1267,13 @@ app.get('/api/bootstrap', async (req, res) => {
     ] = await Promise.all([
       pool.query(`SELECT id, username, full_name as "fullName", role, status, created_at as "createdAt" FROM users ORDER BY created_at DESC`),
       pool.query(`SELECT id, name, emoji, hourly_rate as "hourlyRate", is_active as "isActive" FROM console_types ORDER BY name ASC`),
-      pool.query(`SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", details, remaining_time as "remainingTime", total_assigned_time as "totalAssignedTime", client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId" FROM pcs ORDER BY id ASC`),
+      pool.query(`SELECT id, pc_name as "pcName", ip_address as "ipAddress", status, hourly_rate as "hourlyRate", details, 
+             CASE 
+               WHEN status = 'En Uso' AND session_end_time IS NOT NULL 
+                 THEN GREATEST(0, EXTRACT(EPOCH FROM (session_end_time - CURRENT_TIMESTAMP))::integer)
+               ELSE remaining_time 
+             END as "remainingTime", 
+             total_assigned_time as "totalAssignedTime", client_name as "clientName", current_session_id as "currentSessionId", console_type_id as "consoleTypeId", tuya_device_id as "tuyaDeviceId", session_end_time as "sessionEndTime" FROM pcs ORDER BY id ASC`),
       pool.query(`SELECT id, name, description, duration_minutes as "durationMinutes", price_usd as "priceUsd", is_active as "isActive" FROM plans ORDER BY duration_minutes ASC`),
       pool.query(`SELECT id, name, description, discount_percentage as "discountPercentage", day_of_week as "dayOfWeek", is_active as "isActive" FROM offers ORDER BY day_of_week ASC`),
       pool.query(`SELECT p.id, p.session_id as "sessionId", p.operator_id as "operatorId", u1.full_name as "operatorName", p.validator_id as "validatorId", u2.full_name as "validatorName", p.amount_usd as "amountUsd", p.amount_ves as "amountVes", p.bcv_rate as "bcvRate", p.payment_method as "paymentMethod", (p.receipt_image_url IS NOT NULL) as "hasReceipt", p.reference, p.status, p.offer_applied as "offerApplied", p.created_at as "createdAt", p.validated_at as "validatedAt" FROM payments p LEFT JOIN users u1 ON p.operator_id = u1.id LEFT JOIN users u2 ON p.validator_id = u2.id ORDER BY p.created_at DESC`),
